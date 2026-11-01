@@ -7,6 +7,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomInt } from 'crypto';
@@ -14,6 +15,7 @@ import * as QRCode from 'qrcode';
 import { PlanStrategy } from '../../../plans/interfaces/plan-strategy.interface';
 import { PlanContextService } from '../../../plans/services/plan-context.service';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { UsersService } from '../../auth/services/users.service';
 import { CacheService, ClickEventPayload } from '../../cache/cache.service';
 import { Link, QrConfig } from '../../models/link.entity';
 import { CreateLinkDto } from '../dto/create-link.dto';
@@ -96,6 +98,8 @@ export class LinksService {
     private readonly planContextService: PlanContextService,
     private readonly cacheService: CacheService,
     private readonly configService: ConfigService,
+    @Optional()
+    private readonly usersService?: UsersService,
   ) {}
 
   // ===========================================================================
@@ -111,7 +115,7 @@ export class LinksService {
    * 5. Precalienta la caché Redis (`SET r:{shortCode}`).
    */
   async createLink(user: JwtPayload, dto: CreateLinkDto): Promise<Link> {
-    const strategy = this.resolvePlanStrategy(user.plan);
+    const strategy = await this.resolveEffectivePlanStrategy(user);
     await this.enforceCreationQuotas(user.sub, strategy, dto);
 
     const shortCode = await this.resolveOrAllocateShortCode(dto.shortCode);
@@ -154,7 +158,7 @@ export class LinksService {
     dto: UpdateLinkDto,
   ): Promise<Link> {
     const link = await this.findOneByUser(user.sub, linkId);
-    const strategy = this.resolvePlanStrategy(user.plan);
+    const strategy = await this.resolveEffectivePlanStrategy(user);
 
     await this.applyAndValidateLinkUpdates(link, dto, user.sub, strategy);
     const updatedLink = await this.linkRepository.save(link);
@@ -238,6 +242,23 @@ export class LinksService {
    */
   private resolvePlanStrategy(planCode?: string): PlanStrategy {
     return this.planContextService.getStrategy(planCode);
+  }
+
+  /**
+   * Resuelve la estrategia efectiva del usuario priorizando cambios recientes en PostgreSQL
+   * (ej. promociones asíncronas a PRO vía Stripe Webhooks) cuando el JWT en memoria aún indica STARTER.
+   */
+  private async resolveEffectivePlanStrategy(
+    user: JwtPayload,
+  ): Promise<PlanStrategy> {
+    const jwtStrategy = this.resolvePlanStrategy(user.plan);
+    if (jwtStrategy.tierName !== 'PRO' && this.usersService) {
+      const dbUser = await this.usersService.findById(user.sub);
+      if (dbUser?.planId && dbUser.planId !== user.plan) {
+        return this.resolvePlanStrategy(dbUser.planId);
+      }
+    }
+    return jwtStrategy;
   }
 
   /**

@@ -39,13 +39,13 @@ export class AuthController {
   ) {}
 
   /**
-   * Registra una nueva cuenta de usuario, le asigna el plan `'DEFAULT'` y retorna su JWT.
+   * Registra una nueva cuenta de usuario, le asigna el plan `'STARTER'` y retorna su JWT.
    */
   @Post('register')
   @ApiOperation({
     summary: 'Registrar un nuevo usuario',
     description:
-      'Crea una cuenta con contraseña hasheada mediante bcrypt, asigna el plan por defecto (`DEFAULT`) y emite un token JWT stateless.',
+      'Crea una cuenta con contraseña hasheada mediante bcrypt, asigna el plan por defecto (`STARTER`) y emite un token JWT stateless.',
   })
   @ApiCreatedResponse({
     description: 'Cuenta creada exitosamente y token JWT emitido',
@@ -104,11 +104,20 @@ export class AuthController {
   })
   async getProfile(@CurrentUser() user: JwtPayload) {
     const userEntity = await this.usersService.findById(user.sub);
+    const effectivePlan = userEntity?.planId || user.plan;
+    const effectiveEmail = userEntity?.email || user.email;
+    const accessToken = await this.authService.issueTokenForUser({
+      id: user.sub,
+      email: effectiveEmail,
+      plan: effectivePlan,
+    });
+
     return {
       id: user.sub,
-      email: user.email,
-      plan: userEntity?.planId || user.plan,
+      email: effectiveEmail,
+      plan: effectivePlan,
       createdAt: userEntity?.createdAt,
+      accessToken,
     };
   }
 }

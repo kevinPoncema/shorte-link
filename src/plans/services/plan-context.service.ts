@@ -1,4 +1,14 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
+import {
+  IPlanRepository,
+  PLAN_REPOSITORY,
+} from '../interfaces/plan-repository.interface';
 import {
   PLAN_STRATEGIES,
   PlanStrategy,
@@ -9,10 +19,12 @@ import { StarterPlanStrategy } from '../strategies/starter-plan.strategy';
 /**
  * Servicio de contexto del patrón **Strategy** para `PlansModule`.
  * Mantiene en memoria un `Map<string, PlanStrategy>` libre de consultas SQL
- * para resolver en `O(1)` las reglas aplicables al campo `req.user.plan` del JWT.
+ * para resolver en `O(1)` las reglas aplicables al campo `req.user.plan` del JWT,
+ * y sincroniza de forma idempotente el catálogo base (`STARTER`, `PRO`) en PostgreSQL al iniciar.
  */
 @Injectable()
-export class PlanContextService {
+export class PlanContextService implements OnModuleInit {
+  private readonly logger = new Logger(PlanContextService.name);
   private readonly strategies = new Map<string, PlanStrategy>();
 
   constructor(
@@ -22,8 +34,54 @@ export class PlanContextService {
     @Optional()
     @Inject(PLAN_STRATEGIES)
     registeredStrategies: PlanStrategy[] = [],
+    @Optional()
+    @Inject(PLAN_REPOSITORY)
+    private readonly planRepository?: IPlanRepository,
   ) {
     this.initializeStrategyCatalog(registeredStrategies);
+  }
+
+  /**
+   * Al inicializar el módulo, garantiza de forma idempotente que todos los planes
+   * registrados (`STARTER`, `PRO`) existan en la tabla `plans` para evitar violaciones FK.
+   */
+  async onModuleInit(): Promise<void> {
+    await this.ensureCatalogSeeded();
+  }
+
+  /**
+   * **Orquestador de Siembra Idempotente del Catálogo de Planes:**
+   * Verifica e inserta en `IPlanRepository` cada estrategia canónica registrada si aún no existe.
+   */
+  async ensureCatalogSeeded(): Promise<void> {
+    if (!this.planRepository) {
+      return;
+    }
+
+    const uniqueStrategies = new Map<string, PlanStrategy>();
+    for (const strategy of this.strategies.values()) {
+      uniqueStrategies.set(strategy.tierName.toUpperCase(), strategy);
+    }
+
+    for (const [tierId, strategy] of uniqueStrategies.entries()) {
+      try {
+        const existing = await this.planRepository.findById(tierId);
+        if (!existing) {
+          await this.planRepository.createAndSave({
+            id: tierId,
+            name: strategy.displayName,
+            isActive: true,
+          });
+          this.logger.log(
+            `Plan '${tierId}' (${strategy.displayName}) registrado automáticamente en catálogo.`,
+          );
+        }
+      } catch (err: unknown) {
+        this.logger.warn(
+          `No se pudo verificar/sembrar el plan '${tierId}' al iniciar: ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   /**

@@ -3,9 +3,11 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PlanContextService } from '../../../plans/services/plan-context.service';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
+import { UsersService } from '../../auth/services/users.service';
 import {
   CountryBreakdownItemDto,
   LinkStatsResponseDto,
@@ -88,6 +90,8 @@ export class LinkStatsService {
     @Inject(LINK_EVENT_REPOSITORY)
     private readonly linkEventRepository: ILinkEventRepository,
     private readonly planContextService: PlanContextService,
+    @Optional()
+    private readonly usersService?: UsersService,
   ) {}
 
   /**
@@ -106,7 +110,8 @@ export class LinkStatsService {
   ): Promise<LinkStatsResponseDto> {
     await this.assertUserOwnsLink(user.sub, linkId);
 
-    const window = this.resolveAnalyticsWindow(user.plan, requestedPeriod);
+    const effectivePlan = await this.resolveEffectivePlanCode(user);
+    const window = this.resolveAnalyticsWindow(effectivePlan, requestedPeriod);
     const rawData = await this.fetchAllAggregations(linkId, window.startDate);
 
     const summary = this.buildSummary(
@@ -141,6 +146,22 @@ export class LinkStatsService {
     if (!link) {
       throw new NotFoundException('Link not found');
     }
+  }
+
+  /**
+   * Resuelve el plan vigente del usuario contemplando actualizaciones asíncronas en base de datos.
+   */
+  private async resolveEffectivePlanCode(
+    user: JwtPayload,
+  ): Promise<string | undefined> {
+    const jwtStrategy = this.planContextService.getStrategy(user.plan);
+    if (jwtStrategy.tierName !== 'PRO' && this.usersService) {
+      const dbUser = await this.usersService.findById(user.sub);
+      if (dbUser?.planId) {
+        return dbUser.planId;
+      }
+    }
+    return user.plan;
   }
 
   /**

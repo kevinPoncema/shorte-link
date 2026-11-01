@@ -606,4 +606,124 @@ describe('BillingService, Repositories, Stripe Integration & BillingController',
       expect(sub?.status).toBe('past_due');
     });
   });
+
+  describe('Feature Flag Booleano, Simulación Dev y Rotación de JWT', () => {
+    it('exposes runtime config and toggles ENABLE_PHYSICAL_ORDERS dynamically via boolean flag', async () => {
+      const initialCfg = billingController.getBillingConfig();
+      expect(initialCfg.physicalOrdersEnabled).toBe(true);
+      expect(initialCfg.proPriceIdConfigured).toBe(true);
+
+      // Disable via boolean toggle
+      const offRes = billingController.togglePhysicalOrders({ enabled: false });
+      expect(offRes.physicalOrdersEnabled).toBe(false);
+
+      await expect(
+        billingController.createDirectPhysicalOrder(userWithSub, {
+          items: [{ itemType: 'acrylic_stand', quantity: 1 }],
+          shippingAddress: {
+            fullName: 'Test User',
+            addressLine1: 'Test St',
+            city: 'SPS',
+            phone: '12345678',
+          },
+        }),
+      ).rejects.toThrow(ForbiddenException);
+
+      // Re-enable via boolean toggle
+      const onRes = billingController.togglePhysicalOrders({ enabled: true });
+      expect(onRes.physicalOrdersEnabled).toBe(true);
+
+      const order = await billingController.createDirectPhysicalOrder(
+        userWithSub,
+        {
+          items: [{ itemType: 'acrylic_stand', quantity: 1 }],
+          shippingAddress: {
+            fullName: 'Test User',
+            addressLine1: 'Test St',
+            city: 'SPS',
+            phone: '12345678',
+          },
+        },
+      );
+      expect(order.paymentStatus).toBe('paid');
+    });
+
+    it('upgrades to PRO and cancels back to STARTER rotating JWT accessToken when AuthService is present', async () => {
+      const mockAuthService = {
+        issueTokenForUser: jest.fn(
+          async ({ plan }: { id: string; email: string; plan: string }) =>
+            `signed-jwt-${plan}`,
+        ),
+      } as any;
+      usersService.findById.mockResolvedValue({
+        id: userWithoutSub.sub,
+        email: userWithoutSub.email,
+        planId: 'STARTER',
+      } as any);
+
+      const serviceWithAuth = new BillingService(
+        subscriptionRepository,
+        orderRepository,
+        stripeService,
+        usersService,
+        linksService,
+        configService,
+        mockAuthService,
+      );
+
+      const upgradeRes = await serviceWithAuth.upgradeToProSimulated(
+        userWithoutSub.sub,
+      );
+      expect(upgradeRes.plan).toBe('PRO');
+      expect(upgradeRes.accessToken).toBe('signed-jwt-PRO');
+      expect(usersService.updatePlanTier).toHaveBeenCalledWith(
+        userWithoutSub.sub,
+        'PRO',
+      );
+
+      const cancelRes = await serviceWithAuth.cancelSubscription(
+        userWithoutSub.sub,
+      );
+      expect(cancelRes.plan).toBe('STARTER');
+      expect(cancelRes.accessToken).toBe('signed-jwt-STARTER');
+      expect(usersService.updatePlanTier).toHaveBeenCalledWith(
+        userWithoutSub.sub,
+        'STARTER',
+      );
+    });
+
+    it('falls back gracefully to local simulation when STRIPE_SECRET_KEY is a dev placeholder and Stripe rejects the key', async () => {
+      const placeholderConfig = new ConfigService({
+        STRIPE_SECRET_KEY: 'sk_test_51MockStripeSecretKeyForDevelopment99887766',
+        STRIPE_PRO_PRICE_ID: 'price_1QMockProSubscriptionMonthly19USD',
+      });
+      stripeService.findOrCreateCustomer.mockRejectedValueOnce(
+        Object.assign(new Error('Invalid API Key provided: sk_test_****66'), {
+          type: 'StripeAuthenticationError',
+        }),
+      );
+
+      const devService = new BillingService(
+        subscriptionRepository,
+        orderRepository,
+        stripeService,
+        usersService,
+        linksService,
+        placeholderConfig,
+      );
+
+      const res = await devService.createSubscriptionCheckout(userWithoutSub, {
+        successUrl: 'http://localhost:5173/dashboard?payment=success',
+        cancelUrl: 'http://localhost:5173/dashboard?payment=cancelled',
+      });
+
+      expect(res.checkoutUrl).toBe(
+        'http://localhost:5173/dashboard?payment=success',
+      );
+      expect(usersService.updatePlanTier).toHaveBeenCalledWith(
+        userWithoutSub.sub,
+        'PRO',
+      );
+    });
+  });
 });

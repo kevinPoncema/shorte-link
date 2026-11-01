@@ -9,16 +9,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { BillingController } from '../src/billing/controllers/billing.controller';
+import { ORDER_REPOSITORY } from '../src/billing/interfaces/order-repository.interface';
 import { SUBSCRIPTION_REPOSITORY } from '../src/billing/interfaces/subscription-repository.interface';
+import { Order } from '../src/billing/models/order.entity';
 import { Subscription } from '../src/billing/models/subscription.entity';
+import { TypeOrmOrderRepository } from '../src/billing/repositories/typeorm-order.repository';
 import { TypeOrmSubscriptionRepository } from '../src/billing/repositories/typeorm-subscription.repository';
 import { BillingService } from '../src/billing/services/billing.service';
+import { StripeService } from '../src/billing/services/stripe.service';
 import { AuthController } from '../src/core/auth/controllers/auth.controller';
 import { JwtAuthGuard } from '../src/core/auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../src/core/auth/interfaces/jwt-payload.interface';
 import { USER_REPOSITORY } from '../src/core/auth/interfaces/user-repository.interface';
 import { TypeOrmUserRepository } from '../src/core/auth/repositories/typeorm-user.repository';
 import { AuthService } from '../src/core/auth/services/auth.service';
+import { UsersService } from '../src/core/auth/services/users.service';
 import {
   CLICKS_QUEUE_KEY,
   CacheService,
@@ -78,6 +83,7 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
   const plansStore: Plan[] = [];
   const linksStore: Link[] = [];
   const subscriptionsStore: Subscription[] = [];
+  const ordersStore: Order[] = [];
 
   beforeAll(async () => {
     process.env.JWT_SECRET = 'e2e-fastify-secret';
@@ -85,6 +91,8 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
     process.env.APP_BASE_URL = 'http://localhost:3000';
     process.env.SWAGGER_ENABLED = 'true';
     process.env.SWAGGER_PATH = 'docs';
+    process.env.STRIPE_PRO_PRICE_ID = 'price_e2e_pro';
+    process.env.ENABLE_PHYSICAL_ORDERS = 'true';
 
     const usersRepo = {
       findOne: async ({ where }: { where: { email?: string; id?: string } }) =>
@@ -101,8 +109,27 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
           ...partial,
         }) as User,
       save: async (user: User) => {
+        if (user.planId && !plansStore.some((p) => p.id === user.planId)) {
+          throw new Error(
+            `Key (plan_id)=(${user.planId}) is not present in table "plans".`,
+          );
+        }
         usersStore.push(user);
         return user;
+      },
+      update: async ({ id }: { id: string }, partial: Partial<User>) => {
+        if (
+          partial.planId &&
+          !plansStore.some((p) => p.id === partial.planId)
+        ) {
+          throw new Error(
+            `Key (plan_id)=(${partial.planId}) is not present in table "plans".`,
+          );
+        }
+        const existing = usersStore.find((u) => u.id === id);
+        if (existing) {
+          Object.assign(existing, partial, { updatedAt: new Date() });
+        }
       },
       createQueryBuilder: () => {
         let email = '';
@@ -182,8 +209,110 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
     };
 
     const subscriptionsRepo = {
-      findOne: async ({ where }: { where: { userId: string } }) =>
-        subscriptionsStore.find((s) => s.userId === where.userId) ?? null,
+      findOne: async ({
+        where,
+      }: {
+        where: {
+          userId?: string;
+          providerCustomerId?: string;
+          providerSubscriptionId?: string;
+        };
+      }) =>
+        subscriptionsStore.find(
+          (s) =>
+            (where.userId === undefined || s.userId === where.userId) &&
+            (where.providerCustomerId === undefined ||
+              s.providerCustomerId === where.providerCustomerId) &&
+            (where.providerSubscriptionId === undefined ||
+              s.providerSubscriptionId === where.providerSubscriptionId),
+        ) ?? null,
+      create: (partial: Partial<Subscription>) =>
+        ({
+          id: randomUUID(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...partial,
+        }) as Subscription,
+      save: async (sub: Subscription) => {
+        const idx = subscriptionsStore.findIndex((s) => s.userId === sub.userId);
+        if (idx >= 0) {
+          subscriptionsStore[idx] = {
+            ...subscriptionsStore[idx],
+            ...sub,
+            updatedAt: new Date(),
+          };
+          return subscriptionsStore[idx];
+        }
+        subscriptionsStore.push(sub);
+        return sub;
+      },
+    };
+
+    const ordersRepo = {
+      findOne: async ({
+        where,
+      }: {
+        where: { id?: string; providerPaymentIntentId?: string };
+      }) =>
+        ordersStore.find(
+          (o) =>
+            (where.id === undefined || o.id === where.id) &&
+            (where.providerPaymentIntentId === undefined ||
+              o.providerPaymentIntentId === where.providerPaymentIntentId),
+        ) ?? null,
+      find: async ({ where }: { where: { userId: string } }) =>
+        ordersStore.filter((o) => o.userId === where.userId),
+      create: (partial: Partial<Order>) =>
+        ({
+          id: randomUUID(),
+          currency: 'USD',
+          paymentStatus: 'pending',
+          fulfillmentStatus: 'unfulfilled',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...partial,
+        }) as Order,
+      save: async (order: Order) => {
+        const idx = ordersStore.findIndex((o) => o.id === order.id);
+        if (idx >= 0) {
+          ordersStore[idx] = order;
+        } else {
+          ordersStore.push(order);
+        }
+        return order;
+      },
+      update: async ({ id }: { id: string }, partial: Partial<Order>) => {
+        const existing = ordersStore.find((o) => o.id === id);
+        if (existing) {
+          Object.assign(existing, partial, { updatedAt: new Date() });
+        }
+      },
+    };
+
+    const stripeServiceMock = {
+      getStripeInstance: jest.fn(() => ({
+        subscriptions: { cancel: jest.fn(async () => ({})) },
+        customers: { retrieve: jest.fn(async () => ({})) },
+      })),
+      getWebhookSecret: jest.fn(() => 'whsec_e2e_test'),
+      findOrCreateCustomer: jest.fn(async (email: string, userId: string) => ({
+        id: `cus_e2e_${userId.slice(0, 8)}`,
+        email,
+        metadata: { userId },
+      })),
+      createSubscriptionCheckoutSession: jest.fn(async () => ({
+        id: 'cs_e2e_sub_1',
+        url: 'https://checkout.stripe.com/pay/cs_e2e_sub_1',
+      })),
+      createPortalSession: jest.fn(async () => ({
+        id: 'pts_e2e_1',
+        url: 'https://billing.stripe.com/p/session/pts_e2e_1',
+      })),
+      createPaymentCheckoutSession: jest.fn(async () => ({
+        id: 'cs_e2e_order_1',
+        url: 'https://checkout.stripe.com/pay/cs_e2e_order_1',
+      })),
+      constructWebhookEvent: jest.fn(),
     };
 
     const linkEventRepoMock: ILinkEventRepository = {
@@ -249,10 +378,12 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
         PlanContextService,
         { provide: REDIS_CLIENT, useValue: inMemoryRedis },
         CacheService,
+        UsersService,
         AuthService,
         JwtAuthGuard,
         LinksService,
         LinkStatsService,
+        { provide: StripeService, useValue: stripeServiceMock },
         BillingService,
         { provide: getRepositoryToken(User), useValue: usersRepo },
         { provide: getRepositoryToken(Plan), useValue: plansRepo },
@@ -260,6 +391,10 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
         {
           provide: getRepositoryToken(Subscription),
           useValue: subscriptionsRepo,
+        },
+        {
+          provide: getRepositoryToken(Order),
+          useValue: ordersRepo,
         },
         { provide: USER_REPOSITORY, useClass: TypeOrmUserRepository },
         { provide: PLAN_REPOSITORY, useClass: TypeOrmPlanRepository },
@@ -269,11 +404,16 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
           provide: SUBSCRIPTION_REPOSITORY,
           useClass: TypeOrmSubscriptionRepository,
         },
+        {
+          provide: ORDER_REPOSITORY,
+          useClass: TypeOrmOrderRepository,
+        },
       ],
     }).compile();
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter({ trustProxy: true }),
+      { rawBody: true },
     );
     app.enableCors({
       origin: true,
@@ -771,5 +911,132 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
       'access-control-allow-methods'
     ] as string;
     expect(deleteAllowedMethods).toContain('DELETE');
+  });
+
+  it('completes Billing lifecycle: plan catalog FK seeding, simulate-upgrade JWT rotation, default STRIPE_PRO_PRICE_ID, and boolean physical orders flag', async () => {
+    // Verify PlanContextService.onModuleInit() seeded STARTER and PRO in plans table
+    expect(plansStore.some((p) => p.id === 'STARTER')).toBe(true);
+    expect(plansStore.some((p) => p.id === 'PRO')).toBe(true);
+
+    const regBillingUser = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        email: 'billing-e2e@saas.io',
+        password: 'BillingPassword123',
+      },
+    });
+    expect(regBillingUser.statusCode).toBe(201);
+    const initialToken: string = regBillingUser.json().accessToken;
+
+    // 1. Default STRIPE_PRO_PRICE_ID resolution when priceId is omitted in DTO
+    const checkoutRes = await app.inject({
+      method: 'POST',
+      url: '/billing/checkout/subscription',
+      headers: { authorization: `Bearer ${initialToken}` },
+      payload: {
+        successUrl: 'http://localhost:5173/dashboard?payment=success',
+        cancelUrl: 'http://localhost:5173/dashboard?payment=cancelled',
+      },
+    });
+    expect(checkoutRes.statusCode).toBe(201);
+    expect(checkoutRes.json().checkoutUrl).toContain('checkout.stripe.com');
+
+    // 2. Simulated PRO upgrade in dev mode (verifies FK integrity on users.plan_id='PRO' + JWT rotation)
+    const upgradeRes = await app.inject({
+      method: 'POST',
+      url: '/billing/simulate-upgrade',
+      headers: { authorization: `Bearer ${initialToken}` },
+    });
+    expect(upgradeRes.statusCode).toBe(200);
+    const upgradeBody = upgradeRes.json();
+    expect(upgradeBody.plan).toBe('PRO');
+    expect(upgradeBody.accessToken).toBeDefined();
+
+    // Even using the OLD starter JWT, LinksService resolves effective plan='PRO' from UsersService!
+    const customQrWithStaleToken = await app.inject({
+      method: 'POST',
+      url: '/links',
+      headers: { authorization: `Bearer ${initialToken}` },
+      payload: {
+        name: 'QR Corporativo PRO',
+        targetUrl: 'https://empresa.hn/menu',
+        qrConfig: { foregroundColor: '#1E293B' },
+      },
+    });
+    expect(customQrWithStaleToken.statusCode).toBe(201);
+    const proLinkId: string = customQrWithStaleToken.json().id;
+
+    // 3. Boolean Feature Flag toggle for physical orders
+    const cfgRes = await app.inject({
+      method: 'GET',
+      url: '/billing/config',
+      headers: { authorization: `Bearer ${upgradeBody.accessToken}` },
+    });
+    expect(cfgRes.statusCode).toBe(200);
+    expect(cfgRes.json().physicalOrdersEnabled).toBe(true);
+
+    // Disable physical orders dynamically
+    const disableFlagRes = await app.inject({
+      method: 'PATCH',
+      url: '/billing/config/physical-orders',
+      headers: { authorization: `Bearer ${upgradeBody.accessToken}` },
+      payload: { enabled: false },
+    });
+    expect(disableFlagRes.statusCode).toBe(200);
+    expect(disableFlagRes.json().physicalOrdersEnabled).toBe(false);
+
+    const blockedOrderRes = await app.inject({
+      method: 'POST',
+      url: '/billing/orders/direct',
+      headers: { authorization: `Bearer ${upgradeBody.accessToken}` },
+      payload: {
+        items: [{ linkId: proLinkId, itemType: 'plastic_card', quantity: 2 }],
+        shippingAddress: {
+          fullName: 'Kevin Dev',
+          addressLine1: 'Blvd Morazan',
+          city: 'Tegucigalpa',
+          phone: '+50499998888',
+        },
+      },
+    });
+    expect(blockedOrderRes.statusCode).toBe(403);
+
+    // Re-enable physical orders dynamically via boolean flag
+    const enableFlagRes = await app.inject({
+      method: 'PATCH',
+      url: '/billing/config/physical-orders',
+      headers: { authorization: `Bearer ${upgradeBody.accessToken}` },
+      payload: { enabled: true },
+    });
+    expect(enableFlagRes.statusCode).toBe(200);
+    expect(enableFlagRes.json().physicalOrdersEnabled).toBe(true);
+
+    const directOrderRes = await app.inject({
+      method: 'POST',
+      url: '/billing/orders/direct',
+      headers: { authorization: `Bearer ${upgradeBody.accessToken}` },
+      payload: {
+        items: [{ linkId: proLinkId, itemType: 'plastic_card', quantity: 2 }],
+        shippingAddress: {
+          fullName: 'Kevin Dev',
+          addressLine1: 'Blvd Morazan',
+          city: 'Tegucigalpa',
+          phone: '+50499998888',
+        },
+      },
+    });
+    expect(directOrderRes.statusCode).toBe(201);
+    expect(directOrderRes.json().paymentStatus).toBe('paid');
+
+    // 4. Cancel subscription back to STARTER
+    const cancelRes = await app.inject({
+      method: 'POST',
+      url: '/billing/cancel',
+      headers: { authorization: `Bearer ${upgradeBody.accessToken}` },
+    });
+    expect(cancelRes.statusCode).toBe(200);
+    expect(cancelRes.json().plan).toBe('STARTER');
+    expect(cancelRes.json().accessToken).toBeDefined();
   });
 });

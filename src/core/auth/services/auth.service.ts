@@ -87,6 +87,22 @@ export class AuthService {
     return this.buildAuthSessionResponse(user);
   }
 
+  /**
+   * Emite un nuevo token JWT firmado con el nivel de plan vigente del usuario.
+   * Permite rotar el JWT tras cambios de plan (PRO / STARTER) sin requerir re-login manual.
+   */
+  async issueTokenForUser(params: {
+    id: string;
+    email: string;
+    plan?: string | null;
+  }): Promise<string> {
+    return this.signToken({
+      sub: params.id,
+      email: params.email,
+      plan: params.plan ?? DEFAULT_PLAN_ID,
+    });
+  }
+
   // ===========================================================================
   // Funciones Auxiliares de Dominio (Single Responsibility Principle)
   // ===========================================================================

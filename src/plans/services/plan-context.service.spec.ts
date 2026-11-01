@@ -103,5 +103,32 @@ describe('PlanContextService, StarterPlanStrategy & ProPlanStrategy', () => {
       expect(planContextService.getStrategy('pro')).toBe(proStrategy);
       expect(planContextService.getStrategy('PREMIUM')).toBe(proStrategy);
     });
+
+    it('idempotently seeds STARTER and PRO into IPlanRepository during onModuleInit()', async () => {
+      const stored = new Map<string, any>();
+      const mockPlanRepo = {
+        findById: jest.fn(async (id: string) => stored.get(id) ?? null),
+        createAndSave: jest.fn(async (plan: any) => {
+          stored.set(plan.id, plan);
+          return plan;
+        }),
+      };
+
+      const seededContext = new PlanContextService(
+        starterStrategy,
+        proStrategy,
+        [starterStrategy, proStrategy],
+        mockPlanRepo as any,
+      );
+
+      await seededContext.onModuleInit();
+      expect(stored.has('STARTER')).toBe(true);
+      expect(stored.has('PRO')).toBe(true);
+      expect(mockPlanRepo.createAndSave).toHaveBeenCalledTimes(2);
+
+      // Second invocation is idempotent (no duplicate inserts)
+      await seededContext.onModuleInit();
+      expect(mockPlanRepo.createAndSave).toHaveBeenCalledTimes(2);
+    });
   });
 });
