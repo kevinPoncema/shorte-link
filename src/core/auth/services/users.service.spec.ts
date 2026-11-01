@@ -17,6 +17,7 @@ describe('UsersService', () => {
     };
     mockPlanRepository = {
       findById: jest.fn(),
+      findAll: jest.fn(),
       createAndSave: jest.fn(),
     };
     usersService = new UsersService(mockUserRepository, mockPlanRepository);

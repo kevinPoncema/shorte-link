@@ -2,13 +2,8 @@ import {
   Inject,
   Injectable,
   Logger,
-  OnModuleInit,
   Optional,
 } from '@nestjs/common';
-import {
-  IPlanRepository,
-  PLAN_REPOSITORY,
-} from '../interfaces/plan-repository.interface';
 import {
   PLAN_STRATEGIES,
   PlanStrategy,
@@ -17,13 +12,14 @@ import { ProPlanStrategy } from '../strategies/pro-plan.strategy';
 import { StarterPlanStrategy } from '../strategies/starter-plan.strategy';
 
 /**
- * Servicio de contexto del patrón **Strategy** para `PlansModule`.
- * Mantiene en memoria un `Map<string, PlanStrategy>` libre de consultas SQL
- * para resolver en `O(1)` las reglas aplicables al campo `req.user.plan` del JWT,
- * y sincroniza de forma idempotente el catálogo base (`STARTER`, `PRO`) en PostgreSQL al iniciar.
+ * Contexto en memoria del patrón Strategy para la resolución de planes de suscripción.
+ *
+ * Mantiene un catálogo en memoria indexado en `Map` que garantiza una resolución en complejidad O(1).
+ * Totalmente desacoplado de la persistencia de datos (la siembra de base de datos se realiza
+ * de forma independiente mediante el comando Seeder).
  */
 @Injectable()
-export class PlanContextService implements OnModuleInit {
+export class PlanContextService {
   private readonly logger = new Logger(PlanContextService.name);
   private readonly strategies = new Map<string, PlanStrategy>();
 
@@ -34,59 +30,13 @@ export class PlanContextService implements OnModuleInit {
     @Optional()
     @Inject(PLAN_STRATEGIES)
     registeredStrategies: PlanStrategy[] = [],
-    @Optional()
-    @Inject(PLAN_REPOSITORY)
-    private readonly planRepository?: IPlanRepository,
   ) {
     this.initializeStrategyCatalog(registeredStrategies);
   }
 
   /**
-   * Al inicializar el módulo, garantiza de forma idempotente que todos los planes
-   * registrados (`STARTER`, `PRO`) existan en la tabla `plans` para evitar violaciones FK.
-   */
-  async onModuleInit(): Promise<void> {
-    await this.ensureCatalogSeeded();
-  }
-
-  /**
-   * **Orquestador de Siembra Idempotente del Catálogo de Planes:**
-   * Verifica e inserta en `IPlanRepository` cada estrategia canónica registrada si aún no existe.
-   */
-  async ensureCatalogSeeded(): Promise<void> {
-    if (!this.planRepository) {
-      return;
-    }
-
-    const uniqueStrategies = new Map<string, PlanStrategy>();
-    for (const strategy of this.strategies.values()) {
-      uniqueStrategies.set(strategy.tierName.toUpperCase(), strategy);
-    }
-
-    for (const [tierId, strategy] of uniqueStrategies.entries()) {
-      try {
-        const existing = await this.planRepository.findById(tierId);
-        if (!existing) {
-          await this.planRepository.createAndSave({
-            id: tierId,
-            name: strategy.displayName,
-            isActive: true,
-          });
-          this.logger.log(
-            `Plan '${tierId}' (${strategy.displayName}) registrado automáticamente en catálogo.`,
-          );
-        }
-      } catch (err: unknown) {
-        this.logger.warn(
-          `No se pudo verificar/sembrar el plan '${tierId}' al iniciar: ${(err as Error).message}`,
-        );
-      }
-    }
-  }
-
-  /**
    * **Orquestador de Registro de Estrategias:**
-   * Registra una estrategia indexándola por su `tierName` canónico y en mayúsculas.
+   * Registra una estrategia indexándola por su `tierName` canónico y sus alias en O(1).
    */
   registerStrategy(strategy: PlanStrategy, aliases: string[] = []): void {
     this.indexStrategyKey(strategy.tierName, strategy);
@@ -97,8 +47,8 @@ export class PlanContextService implements OnModuleInit {
 
   /**
    * **Orquestador de Resolución de Estrategia (`O(1)`):**
-   * 1. Normaliza la clave del plan recibida desde el JWT.
-   * 2. Busca la estrategia registrada en el mapa en memoria.
+   * 1. Normaliza la clave del plan recibida desde el JWT o usuario.
+   * 2. Busca la estrategia registrada en el mapa en memoria en tiempo O(1).
    * 3. Si es nula, vacía o desconocida, retorna `StarterPlanStrategy` como fallback seguro.
    */
   getStrategy(planKey?: string | null): PlanStrategy {
@@ -110,9 +60,30 @@ export class PlanContextService implements OnModuleInit {
     return this.lookupStrategy(normalizedKey) ?? this.starterPlanStrategy;
   }
 
-  // ===========================================================================
-  // Funciones Auxiliares (Single Responsibility Principle)
-  // ===========================================================================
+  /**
+   * Verifica en O(1) si un identificador de plan o alias está registrado en el catálogo.
+   */
+  isRegistered(planKey?: string | null): boolean {
+    const normalizedKey = this.normalizePlanKey(planKey);
+    if (!normalizedKey) {
+      return false;
+    }
+    return (
+      this.strategies.has(normalizedKey) ||
+      this.strategies.has(normalizedKey.toUpperCase())
+    );
+  }
+
+  /**
+   * Obtiene la lista de niveles (tiers) canónicos únicos registrados en el catálogo en memoria.
+   */
+  getRegisteredTiers(): string[] {
+    const uniqueTiers = new Set<string>();
+    for (const strategy of this.strategies.values()) {
+      uniqueTiers.add(strategy.tierName.toUpperCase());
+    }
+    return Array.from(uniqueTiers);
+  }
 
   /**
    * Inicializa el catálogo base (`STARTER`, `PRO`) y las estrategias inyectadas por módulo.
@@ -128,10 +99,14 @@ export class PlanContextService implements OnModuleInit {
     for (const strategy of registeredStrategies) {
       this.registerStrategy(strategy);
     }
+
+    this.logger.debug(
+      `PlanContextService inicializado con niveles registrados (O(1)): ${this.getRegisteredTiers().join(', ')}`,
+    );
   }
 
   /**
-   * Indexa una clave en versión original y mayúsculas dentro del `Map`.
+   * Indexa una clave en versión original y mayúsculas dentro del `Map` en O(1).
    */
   private indexStrategyKey(key: string, strategy: PlanStrategy): void {
     const trimmed = key.trim();
@@ -154,7 +129,7 @@ export class PlanContextService implements OnModuleInit {
   }
 
   /**
-   * Busca la estrategia por clave exacta o en mayúsculas.
+   * Busca la estrategia por clave exacta o en mayúsculas en tiempo O(1).
    */
   private lookupStrategy(key: string): PlanStrategy | undefined {
     return this.strategies.get(key) ?? this.strategies.get(key.toUpperCase());
