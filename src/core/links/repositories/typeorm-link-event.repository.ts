@@ -24,7 +24,7 @@ export class TypeOrmLinkEventRepository implements ILinkEventRepository {
   constructor(
     @InjectRepository(LinkEvent)
     private readonly ormRepository: Repository<LinkEvent>,
-  ) {}
+  ) { }
 
   async getTotalsAndUniqueVisitors(
     linkId: string,
@@ -147,9 +147,6 @@ export class TypeOrmLinkEventRepository implements ILinkEventRepository {
     await this.ormRepository.insert(events);
   }
 
-  // ===========================================================================
-  // Funciones Auxiliares de Consulta (Single Responsibility Principle)
-  // ===========================================================================
 
   /**
    * Construye el QueryBuilder base acotado por el filtro temporal indexado:
