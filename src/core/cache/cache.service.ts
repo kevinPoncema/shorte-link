@@ -4,37 +4,44 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import Redis from 'ioredis';
+import {
+  ClickEventPayload,
+  ClickQueuePayload,
+} from '../links/interfaces/click-event.interface';
+import {
+  CLICKS_QUEUE_KEY,
+  ClickQueueService,
+} from './click-queue.service';
 
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 
 export const REDIRECT_KEY_PREFIX = 'r:';
 
-export const CLICKS_QUEUE_KEY = 'queue:clicks';
+export const DEFAULT_REDIRECT_CACHE_TTL_SECONDS = 86400; // 24 horas
 
-export interface ClickQueuePayload {
-  shortCode: string;
-  linkId?: string;
-  ipAddress: string;
-  country?: string | null;
-  userAgent: string | null;
-  referer: string | null;
-  scannedAt: string;
-}
-
-export type ClickEventPayload = ClickQueuePayload;
+// Re-exportaciones de compatibilidad hacia atrás
+export {
+  ClickEventPayload,
+  ClickQueuePayload,
+  CLICKS_QUEUE_KEY,
+};
 
 /**
- * Servicio de acceso a la capa en memoria Redis (Data Plane & Analytics Queue).
+ * Servicio de acceso a la capa de caché en memoria Redis (Data Plane de Redirección).
  * Administra el ciclo de vida de claves `r:{shortCode}` bajo política `allkeys-lru`
- * y la emisión asíncrona hacia `queue:clicks`.
+ * con soporte para TTL configurable y precalentamiento.
  */
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
 
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) { }
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    @Optional() private readonly clickQueueService?: ClickQueueService,
+  ) {}
 
   /**
    * Intenta configurar `maxmemory-policy allkeys-lru` en tiempo de arranque.
@@ -73,7 +80,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Obtiene en sub-milisegundos la URL de destino almacenada en Redis (`GET r:{shortCode}`).
+   * Obtiene la URL de destino almacenada en caché para un `shortCode`.
    */
   async getRedirectTarget(shortCode: string): Promise<string | null> {
     return this.redis.get(this.buildRedirectKey(shortCode));
@@ -81,9 +88,19 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Almacena o precalienta la URL de destino en Redis (`SET r:{shortCode} {targetUrl}`).
+   * Permite especificar un TTL opcional en segundos para evitar acumulación indefinida de claves frías.
    */
-  async setRedirectTarget(shortCode: string, targetUrl: string): Promise<void> {
-    await this.redis.set(this.buildRedirectKey(shortCode), targetUrl);
+  async setRedirectTarget(
+    shortCode: string,
+    targetUrl: string,
+    ttlSeconds?: number,
+  ): Promise<void> {
+    const key = this.buildRedirectKey(shortCode);
+    if (ttlSeconds && ttlSeconds > 0) {
+      await this.redis.set(key, targetUrl, 'EX', ttlSeconds);
+    } else {
+      await this.redis.set(key, targetUrl);
+    }
   }
 
   /**
@@ -93,26 +110,36 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     await this.redis.del(this.buildRedirectKey(shortCode));
   }
 
+  // ===========================================================================
+  // Métodos de cola (Delegados a ClickQueueService para compatibilidad hacia atrás)
+  // ===========================================================================
+
   /**
    * Inserta un evento analítico al inicio de la cola Redis (`LPUSH queue:clicks`).
+   * @deprecated Preferir inyectar y utilizar directamente `ClickQueueService`.
    */
-  async enqueueClickEvent(payload: ClickQueuePayload): Promise<void> {
+  async enqueueClickEvent(payload: ClickEventPayload): Promise<void> {
+    if (this.clickQueueService) {
+      return this.clickQueueService.enqueueClickEvent(payload);
+    }
     await this.redis.lpush(CLICKS_QUEUE_KEY, JSON.stringify(payload));
   }
 
   /**
-   * Extrae en lote hasta `batchSize` eventos del final de la cola Redis (`RPOP queue:clicks`),
-   * liberando inmediatamente memoria RAM de Redis para que el worker los inserte en PostgreSQL.
+   * Extrae en lote hasta `batchSize` eventos del final de la cola Redis (`RPOP queue:clicks`).
+   * @deprecated Preferir inyectar y utilizar directamente `ClickQueueService`.
    */
   async popClickEventsBatch(
     batchSize: number = 200,
-  ): Promise<ClickQueuePayload[]> {
+  ): Promise<ClickEventPayload[]> {
+    if (this.clickQueueService) {
+      return this.clickQueueService.popClickEventsBatch(batchSize);
+    }
     if (batchSize <= 0) {
       return [];
     }
 
     try {
-      // Intento con RPOP multi-elemento soportado nativamente en Redis 6.2+
       const raw = await (this.redis as any).rpop(CLICKS_QUEUE_KEY, batchSize);
       if (!raw) {
         return [];
@@ -120,7 +147,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       const rawItems: string[] = Array.isArray(raw) ? raw : [raw];
       return this.parseRawQueueItems(rawItems);
     } catch {
-      // Fallback para Redis < 6.2 o mocks de pruebas unitarias
       const pipeline = this.redis.pipeline();
       for (let i = 0; i < batchSize; i++) {
         pipeline.rpop(CLICKS_QUEUE_KEY);
@@ -142,19 +168,23 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Retorna la cantidad de eventos encolados pendientes en Redis (`LLEN queue:clicks`).
+   * @deprecated Preferir inyectar y utilizar directamente `ClickQueueService`.
    */
   async getQueueLength(): Promise<number> {
+    if (this.clickQueueService) {
+      return this.clickQueueService.getQueueLength();
+    }
     return this.redis.llen(CLICKS_QUEUE_KEY);
   }
 
   /**
    * Parsea cadenas JSON ignorando registros malformados de forma resiliente.
    */
-  private parseRawQueueItems(rawItems: string[]): ClickQueuePayload[] {
-    const valid: ClickQueuePayload[] = [];
+  private parseRawQueueItems(rawItems: string[]): ClickEventPayload[] {
+    const valid: ClickEventPayload[] = [];
     for (const raw of rawItems) {
       try {
-        const item = JSON.parse(raw) as ClickQueuePayload;
+        const item = JSON.parse(raw) as ClickEventPayload;
         if (item && item.shortCode && item.ipAddress) {
           valid.push(item);
         }

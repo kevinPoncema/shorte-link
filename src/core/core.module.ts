@@ -11,6 +11,7 @@ import { TypeOrmUserRepository } from './auth/repositories/typeorm-user.reposito
 import { AuthService } from './auth/services/auth.service';
 import { UsersService } from './auth/services/users.service';
 import { CacheService, REDIS_CLIENT } from './cache/cache.service';
+import { ClickQueueService } from './cache/click-queue.service';
 import { LinksController } from './links/controllers/links.controller';
 import { RedirectController } from './links/controllers/redirect.controller';
 import { LINK_EVENT_REPOSITORY } from './links/interfaces/link-event-repository.interface';
@@ -82,6 +83,7 @@ import { User } from './models/user.entity';
       useClass: TypeOrmLinkEventRepository,
     },
     CacheService,
+    ClickQueueService,
     AuthService,
     UsersService,
     JwtAuthGuard,
@@ -94,6 +96,7 @@ import { User } from './models/user.entity';
     LINK_REPOSITORY,
     LINK_EVENT_REPOSITORY,
     CacheService,
+    ClickQueueService,
     AuthService,
     UsersService,
     JwtAuthGuard,

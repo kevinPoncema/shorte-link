@@ -16,7 +16,8 @@ import { PlanStrategy } from '../../../plans/interfaces/plan-strategy.interface'
 import { PlanContextService } from '../../../plans/services/plan-context.service';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { UsersService } from '../../auth/services/users.service';
-import { CacheService, ClickEventPayload } from '../../cache/cache.service';
+import { CacheService } from '../../cache/cache.service';
+import { ClickEventPayload } from '../interfaces/click-event.interface';
 import { Link, QrConfig } from '../../models/link.entity';
 import { CreateLinkDto } from '../dto/create-link.dto';
 import { UpdateLinkDto } from '../dto/update-link.dto';
@@ -54,9 +55,7 @@ export const RESERVED_SLUGS = new Set([
  * Resultado de la resolución de un `shortCode` en el Fast-Path de redirección.
  */
 export interface ResolvedRedirect {
-  /** URL de destino hacia donde redirigir con `HTTP 302 Found`. */
   targetUrl: string;
-  /** Identificador UUID del enlace cuando provino de un Cache Miss en PostgreSQL. */
   linkId?: string;
 }
 
@@ -64,9 +63,7 @@ export interface ResolvedRedirect {
  * Artefacto generado al renderizar el código QR dinámico de un enlace.
  */
 export interface GeneratedQrResult {
-  /** Cabecera MIME (`image/png` o `image/svg+xml`). */
   contentType: string;
-  /** Buffer binario PNG o cadena XML SVG. */
   data: Buffer | string;
 }
 
@@ -100,11 +97,9 @@ export class LinksService {
     private readonly configService: ConfigService,
     @Optional()
     private readonly usersService?: UsersService,
-  ) {}
+  ) { }
 
-  // ===========================================================================
-  // Orquestadores de Casos de Uso (Public Business Orchestrators)
-  // ===========================================================================
+
 
   /**
    * **Orquestador de Creación de Enlace (`POST /links`):**
@@ -233,9 +228,6 @@ export class LinksService {
     this.dispatchClickEventToQueue(payload);
   }
 
-  // ===========================================================================
-  // Funciones Auxiliares de Dominio (Single Responsibility Principle)
-  // ===========================================================================
 
   /**
    * Obtiene la estrategia de plan correspondiente al usuario.

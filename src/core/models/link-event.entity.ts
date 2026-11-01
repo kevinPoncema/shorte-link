@@ -29,9 +29,7 @@ export class LinkEvent {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
 
-  /**
-   * Clave foránea indexada hacia el enlace resuelto (`links.id`).
-   */
+
   @ApiProperty({
     description: 'UUID del enlace visitado o escaneado',
     format: 'uuid',
@@ -41,17 +39,12 @@ export class LinkEvent {
   @Column({ name: 'link_id', type: 'uuid', nullable: false })
   linkId: string;
 
-  /**
-   * Relación `ManyToOne` hacia `Link`.
-   */
   @ApiHideProperty()
   @ManyToOne(() => Link, (link) => link.events, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'link_id' })
   link: Link;
 
-  /**
-   * Huella anonimizada (hash SHA-256 truncado con sal) de la dirección IP del visitante.
-   */
+
   @ApiProperty({
     description: 'Dirección IP anonimizada mediante hash SHA-256 con sal',
     example: '9f86d081884c7d659a2feaa0c55ad015',
@@ -83,9 +76,7 @@ export class LinkEvent {
   @Column({ type: 'varchar', length: 2, nullable: true })
   country: string | null;
 
-  /**
-   * Sistema operativo detectado a partir del `User-Agent`.
-   */
+
   @ApiProperty({
     description: 'Sistema operativo parseado (nullable)',
     example: 'iOS',
@@ -95,9 +86,7 @@ export class LinkEvent {
   @Column({ type: 'varchar', length: 64, nullable: true })
   os: string | null;
 
-  /**
-   * Navegador detectado a partir del `User-Agent`.
-   */
+
   @ApiProperty({
     description: 'Navegador detectado (nullable)',
     example: 'Mobile Safari',
@@ -107,9 +96,7 @@ export class LinkEvent {
   @Column({ type: 'varchar', length: 64, nullable: true })
   browser: string | null;
 
-  /**
-   * Cabecera `Referer` con la URL de origen de la visita.
-   */
+
   @ApiProperty({
     description: 'URL de referencia (cabecera Referer)',
     example: 'https://linkedin.com',
@@ -119,9 +106,7 @@ export class LinkEvent {
   @Column({ type: 'text', nullable: true })
   referer: string | null;
 
-  /**
-   * Marca de tiempo exacta en que ocurrió la redirección o escaneo.
-   */
+
   @ApiProperty({
     description: 'Marca de tiempo del escaneo o clic (ISO 8601)',
     example: '2026-10-31T22:30:00.000Z',

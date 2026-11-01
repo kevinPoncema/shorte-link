@@ -27,15 +27,8 @@ export interface QrConfig {
   errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
 }
 
-/**
- * Entidad principal de enlace corto y código QR dinámico (`links`).
- * Sincroniza su resolución rápida con Redis bajo la clave `r:{shortCode}`.
- */
 @Entity('links')
 export class Link {
-  /**
-   * Identificador único universal (UUID v4) del enlace.
-   */
   @ApiProperty({
     description: 'Identificador único del enlace (UUID v4)',
     format: 'uuid',
@@ -44,10 +37,7 @@ export class Link {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /**
-   * Slug alfanumérico único utilizado en la ruta pública `GET /:shortCode`
-   * y codificado dentro del código QR dinámico.
-   */
+
   @ApiProperty({
     description: 'Código alfanumérico corto único (6 a 16 caracteres)',
     example: 'aB3x9Kq',
@@ -62,9 +52,7 @@ export class Link {
   })
   shortCode: string;
 
-  /**
-   * Nombre o etiqueta de referencia para identificar el enlace en el dashboard.
-   */
+
   @ApiPropertyOptional({
     description: 'Nombre descriptivo o de referencia para identificar el enlace',
     example: 'Campaña Black Friday 2026',
@@ -75,9 +63,7 @@ export class Link {
   @Column({ name: 'name', type: 'varchar', length: 150, nullable: true })
   name: string | null;
 
-  /**
-   * URL original de destino hacia la que redirige el Fast-Path con `HTTP 302 Found`.
-   */
+
   @ApiProperty({
     description: 'URL absoluta de destino (HTTP/HTTPS)',
     format: 'uri',
@@ -86,9 +72,6 @@ export class Link {
   @Column({ name: 'target_url', type: 'text', nullable: false })
   targetUrl: string;
 
-  /**
-   * Estado operativo del enlace. Si es `false`, el Fast-Path responde `404 Not Found`.
-   */
   @ApiProperty({
     description: 'Indica si el enlace está activo para redirección pública',
     example: true,
@@ -97,9 +80,7 @@ export class Link {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  /**
-   * Configuración de diseño visual del código QR almacenada en formato `jsonb`.
-   */
+
   @ApiProperty({
     description: 'Parámetros JSONB de personalización del código QR',
     example: {
@@ -119,9 +100,7 @@ export class Link {
   })
   qrConfig: QrConfig;
 
-  /**
-   * Identificador UUID del usuario propietario del enlace.
-   */
+
   @ApiProperty({
     description: 'UUID del usuario propietario del enlace',
     format: 'uuid',
@@ -131,24 +110,17 @@ export class Link {
   @Column({ name: 'user_id', type: 'uuid', nullable: false })
   userId: string;
 
-  /**
-   * Relación `ManyToOne` hacia el usuario propietario (`CASCADE` al eliminar usuario).
-   */
+
   @ApiHideProperty()
   @ManyToOne(() => User, (user) => user.links, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  /**
-   * Historial de eventos de escaneo/clic registrados para este enlace.
-   */
+
   @ApiHideProperty()
   @OneToMany(() => LinkEvent, (event) => event.link)
   events: LinkEvent[];
 
-  /**
-   * Marca de tiempo de creación del enlace.
-   */
   @ApiProperty({
     description: 'Fecha de creación del enlace (ISO 8601)',
     example: '2026-10-31T22:15:00.000Z',
@@ -156,9 +128,6 @@ export class Link {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  /**
-   * Marca de tiempo de última modificación del enlace.
-   */
   @ApiProperty({
     description: 'Fecha de última actualización del enlace (ISO 8601)',
     example: '2026-10-31T22:20:00.000Z',

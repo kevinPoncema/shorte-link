@@ -6,7 +6,8 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CacheService, ClickQueuePayload } from '../../cache/cache.service';
+import { CacheService } from '../../cache/cache.service';
+import { ClickQueuePayload } from '../interfaces/click-event.interface';
 import {
   CreateLinkEventRecord,
   ILinkEventRepository,
@@ -261,23 +262,20 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       return 'Others';
     }
 
-    if (/iPhone|iPad|iPod/i.test(userAgent)) {
-      return 'iOS';
+    switch (true) {
+      case /iPhone|iPad|iPod/i.test(userAgent):
+        return 'iOS';
+      case /Android/i.test(userAgent):
+        return 'Android';
+      case /Windows NT/i.test(userAgent):
+        return 'Windows';
+      case /Mac OS X|Macintosh/i.test(userAgent):
+        return 'macOS';
+      case /Linux/i.test(userAgent):
+        return 'Linux';
+      default:
+        return 'Others';
     }
-    if (/Android/i.test(userAgent)) {
-      return 'Android';
-    }
-    if (/Windows NT/i.test(userAgent)) {
-      return 'Windows';
-    }
-    if (/Mac OS X|Macintosh/i.test(userAgent)) {
-      return 'macOS';
-    }
-    if (/Linux/i.test(userAgent)) {
-      return 'Linux';
-    }
-
-    return 'Others';
   }
 
   /**
@@ -288,26 +286,24 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       return 'Others';
     }
 
-    if (/Version\/.*Mobile.*Safari|iPhone.*Safari|iPad.*Safari/i.test(userAgent)) {
-      return 'Mobile Safari';
+    switch (true) {
+      case /Version\/.*Mobile.*Safari|iPhone.*Safari|iPad.*Safari/i.test(
+        userAgent,
+      ):
+        return 'Mobile Safari';
+      case /Chrome\/.*Mobile|CriOS/i.test(userAgent):
+        return 'Chrome Mobile';
+      case /Edg\/|EdgA\/|Edge\//i.test(userAgent):
+        return 'Edge';
+      case /Firefox\/|FxiOS\//i.test(userAgent):
+        return 'Firefox';
+      case /Chrome\/|Chromium\//i.test(userAgent):
+        return 'Chrome';
+      case /Safari\//i.test(userAgent) && !/Chrome/i.test(userAgent):
+        return 'Safari';
+      default:
+        return 'Others';
     }
-    if (/Chrome\/.*Mobile|CriOS/i.test(userAgent)) {
-      return 'Chrome Mobile';
-    }
-    if (/Edg\/|EdgA\/|Edge\//i.test(userAgent)) {
-      return 'Edge';
-    }
-    if (/Firefox\/|FxiOS\//i.test(userAgent)) {
-      return 'Firefox';
-    }
-    if (/Chrome\/|Chromium\//i.test(userAgent)) {
-      return 'Chrome';
-    }
-    if (/Safari\//i.test(userAgent) && !/Chrome/i.test(userAgent)) {
-      return 'Safari';
-    }
-
-    return 'Others';
   }
 
   /**

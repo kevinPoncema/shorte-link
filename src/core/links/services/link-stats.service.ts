@@ -92,7 +92,7 @@ export class LinkStatsService {
     private readonly planContextService: PlanContextService,
     @Optional()
     private readonly usersService?: UsersService,
-  ) {}
+  ) { }
 
   /**
    * **Orquestador de Estadísticas de un Enlace (`GET /links/:id/stats`):**
@@ -131,13 +131,7 @@ export class LinkStatsService {
     };
   }
 
-  // ===========================================================================
-  // Funciones Auxiliares de Dominio (Single Responsibility Principle)
-  // ===========================================================================
 
-  /**
-   * Verifica que el enlace exista y pertenezca al usuario solicitante.
-   */
   private async assertUserOwnsLink(
     userId: string,
     linkId: string,
@@ -148,9 +142,7 @@ export class LinkStatsService {
     }
   }
 
-  /**
-   * Resuelve el plan vigente del usuario contemplando actualizaciones asíncronas en base de datos.
-   */
+
   private async resolveEffectivePlanCode(
     user: JwtPayload,
   ): Promise<string | undefined> {

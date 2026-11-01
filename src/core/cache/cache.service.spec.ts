@@ -84,6 +84,18 @@ describe('CacheService', () => {
         'https://example.com',
       );
 
+      await cacheService.setRedirectTarget(
+        'abc1234',
+        'https://example.com',
+        3600,
+      );
+      expect(redisMock.set).toHaveBeenCalledWith(
+        'r:abc1234',
+        'https://example.com',
+        'EX',
+        3600,
+      );
+
       redisMock.get.mockResolvedValueOnce('https://example.com');
       const target = await cacheService.getRedirectTarget('abc1234');
       expect(redisMock.get).toHaveBeenCalledWith('r:abc1234');
@@ -109,6 +121,36 @@ describe('CacheService', () => {
         CLICKS_QUEUE_KEY,
         JSON.stringify(payload),
       );
+    });
+
+    it('delegates queue operations to ClickQueueService when injected', async () => {
+      const mockQueueService = {
+        enqueueClickEvent: jest.fn().mockResolvedValue(undefined),
+        popClickEventsBatch: jest.fn().mockResolvedValue([]),
+        getQueueLength: jest.fn().mockResolvedValue(10),
+      };
+      const serviceWithQueue = new CacheService(
+        redisMock as never,
+        mockQueueService as any,
+      );
+
+      const payload: ClickQueuePayload = {
+        shortCode: 'abc1234',
+        ipAddress: 'hashed-ip',
+        userAgent: null,
+        referer: null,
+        scannedAt: '2026-10-31T22:00:00.000Z',
+      };
+
+      await serviceWithQueue.enqueueClickEvent(payload);
+      expect(mockQueueService.enqueueClickEvent).toHaveBeenCalledWith(payload);
+
+      await serviceWithQueue.popClickEventsBatch(50);
+      expect(mockQueueService.popClickEventsBatch).toHaveBeenCalledWith(50);
+
+      const len = await serviceWithQueue.getQueueLength();
+      expect(mockQueueService.getQueueLength).toHaveBeenCalled();
+      expect(len).toBe(10);
     });
   });
 });
