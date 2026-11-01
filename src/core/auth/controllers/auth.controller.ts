@@ -1,6 +1,15 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiOkResponse,
@@ -8,18 +17,26 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../decorators/current-user.decorator';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { JWT_BEARER_AUTH } from '../../../openapi.config';
 import { AuthResponseDto } from '../dto/auth-response.dto';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { AuthService } from '../services/auth.service';
+import { UsersService } from '../services/users.service';
 
 /**
- * Controlador público de autenticación (`POST /auth/register` y `POST /auth/login`).
+ * Controlador de autenticación (`POST /auth/register`, `POST /auth/login`, `GET /auth/me`).
  */
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly usersService: UsersService,
+  ) {}
 
   /**
    * Registra una nueva cuenta de usuario, le asigna el plan `'DEFAULT'` y retorna su JWT.
@@ -66,5 +83,32 @@ export class AuthController {
   })
   async login(@Body() dto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(dto);
+  }
+
+  /**
+   * Obtiene los datos del perfil y plan actual del usuario autenticado.
+   */
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth(JWT_BEARER_AUTH)
+  @ApiOperation({
+    summary: 'Consultar información del usuario autenticado',
+    description:
+      'Devuelve los datos de la cuenta incluyendo su identificador, email y plan vigente en PostgreSQL.',
+  })
+  @ApiOkResponse({
+    description: 'Perfil del usuario recuperado exitosamente',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Token JWT ausente o inválido',
+  })
+  async getProfile(@CurrentUser() user: JwtPayload) {
+    const userEntity = await this.usersService.findById(user.sub);
+    return {
+      id: user.sub,
+      email: user.email,
+      plan: userEntity?.planId || user.plan,
+      createdAt: userEntity?.createdAt,
+    };
   }
 }

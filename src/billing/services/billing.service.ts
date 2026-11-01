@@ -139,6 +139,76 @@ export class BillingService {
   }
 
   /**
+   * Cancela la suscripción del usuario, actualiza el registro a `'canceled'`
+   * y degrada la cuenta automáticamente al plan original `'STARTER'`.
+   */
+  async cancelSubscription(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    plan: string;
+  }> {
+    const sub = await this.findByUserId(userId);
+    if (sub) {
+      if (sub.providerSubscriptionId) {
+        try {
+          await this.stripeService
+            .getStripeInstance()
+            .subscriptions.cancel(sub.providerSubscriptionId);
+        } catch (e: any) {
+          this.logger.warn(
+            `No se pudo cancelar en Stripe (${sub.providerSubscriptionId}): ${e.message}`,
+          );
+        }
+      }
+      sub.status = 'canceled';
+      await this.subscriptionRepository.save(sub);
+    }
+
+    await this.usersService.updatePlanTier(userId, 'STARTER');
+    this.logger.log(`Usuario ${userId} canceló suscripción y volvió a STARTER.`);
+
+    return {
+      success: true,
+      message:
+        'Suscripción cancelada exitosamente. Tu cuenta ha vuelto al plan STARTER.',
+      plan: 'STARTER',
+    };
+  }
+
+  /**
+   * Activa el plan PRO directamente (útil para pruebas o modo offline sin Stripe CLI).
+   */
+  async upgradeToProSimulated(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    plan: string;
+  }> {
+    const now = new Date();
+    const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    await this.subscriptionRepository.upsert({
+      userId,
+      providerName: 'STRIPE',
+      providerCustomerId: `cus_sim_${userId.slice(0, 8)}`,
+      providerSubscriptionId: `sub_sim_${userId.slice(0, 8)}`,
+      providerPriceId: 'price_pro_simulated',
+      status: 'active',
+      currentPeriodStart: now,
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+    });
+
+    await this.usersService.updatePlanTier(userId, 'PRO');
+    this.logger.log(`Usuario ${userId} activó plan PRO en modo simulado.`);
+
+    return {
+      success: true,
+      message: 'Plan cambiado exitosamente a PRO.',
+      plan: 'PRO',
+    };
+  }
+
+  /**
    * **Procesa una orden de insumos físicos (`POST /billing/checkout/physical`):**
    * 1. Valida el Feature Flag `ENABLE_PHYSICAL_ORDERS`.
    * 2. Valida la pertenencia de los `linkId` proporcionados contra el usuario en sesión.

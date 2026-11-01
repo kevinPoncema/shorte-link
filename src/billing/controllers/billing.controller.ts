@@ -126,6 +126,42 @@ export class BillingController {
   }
 
   /**
+   * Cancela la suscripción del usuario autenticado y restaura el plan a STARTER.
+   */
+  @Post('cancel')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth(JWT_BEARER_AUTH)
+  @ApiOperation({
+    summary: 'Cancelar suscripción y volver al plan Starter original',
+    description:
+      'Cancela la suscripción activa del usuario y degrada su nivel de cuenta a STARTER.',
+  })
+  @ApiOkResponse({
+    description: 'Suscripción cancelada exitosamente',
+  })
+  async cancelSubscription(@CurrentUser() user: JwtPayload) {
+    return this.billingService.cancelSubscription(user.sub);
+  }
+
+  /**
+   * Activa el plan PRO directamente (Modo desarrollo / Pruebas).
+   */
+  @Post('simulate-upgrade')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth(JWT_BEARER_AUTH)
+  @ApiOperation({
+    summary: 'Activar plan PRO directamente (Modo desarrollo / Pruebas)',
+    description:
+      'Simula el webhook de activación de Stripe y promueve la cuenta a PRO.',
+  })
+  @ApiOkResponse({
+    description: 'Plan cambiado a PRO exitosamente',
+  })
+  async simulateUpgrade(@CurrentUser() user: JwtPayload) {
+    return this.billingService.upgradeToProSimulated(user.sub);
+  }
+
+  /**
    * Procesa la orden de insumos físicos (placas QR, stickers NFC) sujeta a Feature Flag.
    */
   @Post('checkout/physical')
