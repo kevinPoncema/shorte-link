@@ -9,6 +9,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { USER_REPOSITORY } from './auth/interfaces/user-repository.interface';
 import { TypeOrmUserRepository } from './auth/repositories/typeorm-user.repository';
 import { AuthService } from './auth/services/auth.service';
+import { UsersService } from './auth/services/users.service';
 import { CacheService, REDIS_CLIENT } from './cache/cache.service';
 import { LinksController } from './links/controllers/links.controller';
 import { RedirectController } from './links/controllers/redirect.controller';
@@ -82,6 +83,7 @@ import { User } from './models/user.entity';
     },
     CacheService,
     AuthService,
+    UsersService,
     JwtAuthGuard,
     LinksService,
     LinkStatsService,
@@ -93,6 +95,7 @@ import { User } from './models/user.entity';
     LINK_EVENT_REPOSITORY,
     CacheService,
     AuthService,
+    UsersService,
     JwtAuthGuard,
     JwtModule,
     LinksService,

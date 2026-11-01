@@ -23,7 +23,7 @@ export type SubscriptionStatus =
 
 /**
  * Entidad de suscripción de facturación (`subscriptions`).
- * Mantiene una relación `1:1` con `User` para futura sincronización con webhooks de pasarela.
+ * Mantiene una relación `1:1` con `User` para sincronización con webhooks de pasarela.
  */
 @Entity('subscriptions')
 export class Subscription {
@@ -59,38 +59,73 @@ export class Subscription {
   user: User;
 
   /**
+   * Nombre de la pasarela de pagos activa (ej. 'STRIPE', 'PIXELPAY').
+   */
+  @ApiProperty({
+    description: 'Nombre de la pasarela de pago externa',
+    example: 'STRIPE',
+    default: 'STRIPE',
+  })
+  @Column({
+    name: 'provider_name',
+    type: 'varchar',
+    length: 32,
+    default: 'STRIPE',
+    nullable: false,
+  })
+  providerName: string;
+
+  /**
    * Identificador del cliente en la pasarela de pago externa (ej. `cus_...` en Stripe).
    */
   @ApiProperty({
-    description: 'Identificador del cliente en el proveedor externo de pagos',
+    description: 'ID del cliente en el proveedor de pagos (cus_...)',
     example: 'cus_Qo12abcXYZ',
-    nullable: true,
-    type: String,
   })
+  @Index('idx_subscriptions_provider_customer_id')
   @Column({
     name: 'provider_customer_id',
     type: 'varchar',
     length: 255,
-    nullable: true,
+    nullable: false,
   })
-  providerCustomerId: string | null;
+  providerCustomerId: string;
 
   /**
    * Identificador de la suscripción en la pasarela de pago externa (ej. `sub_...`).
    */
   @ApiProperty({
-    description: 'Identificador de suscripción en la pasarela externa',
+    description: 'ID de suscripción en la pasarela externa (sub_...)',
     example: 'sub_1Q0abcXYZ',
     nullable: true,
     type: String,
   })
+  @Index('idx_subscriptions_provider_subscription_id', { unique: true })
   @Column({
     name: 'provider_subscription_id',
     type: 'varchar',
     length: 255,
+    unique: true,
     nullable: true,
   })
   providerSubscriptionId: string | null;
+
+  /**
+   * Identificador del precio o plan en la pasarela externa (ej. `price_...`).
+   */
+  @ApiProperty({
+    description: 'ID del precio/plan en la pasarela externa (price_...)',
+    example: 'price_1OtXYZ1234567890',
+    nullable: true,
+    type: String,
+  })
+  @Column({
+    name: 'provider_price_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  providerPriceId: string | null;
 
   /**
    * Estado vigente de cobro de la suscripción.
@@ -98,22 +133,46 @@ export class Subscription {
   @ApiProperty({
     description: 'Estado actual de la suscripción',
     enum: ['active', 'canceled', 'past_due', 'trialing', 'incomplete'],
-    example: 'active',
+    example: 'incomplete',
+    default: 'incomplete',
   })
-  @Column({ type: 'varchar', length: 32, default: 'active' })
+  @Column({ type: 'varchar', length: 32, default: 'incomplete' })
   status: SubscriptionStatus;
+
+  /**
+   * Inicio del ciclo de facturación actual.
+   */
+  @ApiProperty({
+    description: 'Inicio del ciclo de facturación actual (ISO 8601)',
+    example: '2026-11-01T00:00:00.000Z',
+    nullable: true,
+    type: Date,
+  })
+  @Column({ name: 'current_period_start', type: 'timestamptz', nullable: true })
+  currentPeriodStart: Date | null;
 
   /**
    * Fecha de corte o renovación del período de facturación actual.
    */
   @ApiProperty({
     description: 'Fecha de término del ciclo de facturación vigente (ISO 8601)',
-    example: '2026-11-30T23:59:59.000Z',
+    example: '2026-12-01T00:00:00.000Z',
     nullable: true,
     type: Date,
   })
   @Column({ name: 'current_period_end', type: 'timestamptz', nullable: true })
   currentPeriodEnd: Date | null;
+
+  /**
+   * Indica si el usuario canceló la autorrenovación al final del ciclo.
+   */
+  @ApiProperty({
+    description: 'Indica si el usuario canceló la renovación automática',
+    example: false,
+    default: false,
+  })
+  @Column({ name: 'cancel_at_period_end', type: 'boolean', default: false })
+  cancelAtPeriodEnd: boolean;
 
   /**
    * Fecha de creación del registro de suscripción.

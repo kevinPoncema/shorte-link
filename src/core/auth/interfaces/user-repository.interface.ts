@@ -35,4 +35,14 @@ export interface IUserRepository {
    * Crea y guarda un nuevo registro de usuario en la capa de persistencia.
    */
   createAndSave(attributes: CreateUserAttributes): Promise<User>;
+
+  /**
+   * Busca un usuario por su identificador único (UUID).
+   */
+  findById(id: string): Promise<User | null>;
+
+  /**
+   * Actualiza el nivel de plan (`planId` / `planTier`) del usuario en persistencia.
+   */
+  updatePlanTier(userId: string, planTier: string): Promise<void>;
 }

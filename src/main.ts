@@ -21,6 +21,7 @@ async function bootstrap(): Promise<void> {
     new FastifyAdapter({
       trustProxy: true,
     }),
+    { rawBody: true },
   );
 
   app.enableCors({

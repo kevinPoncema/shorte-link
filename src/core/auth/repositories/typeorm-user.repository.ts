@@ -37,4 +37,14 @@ export class TypeOrmUserRepository implements IUserRepository {
     const userEntity = this.ormRepository.create(attributes);
     return this.ormRepository.save(userEntity);
   }
+
+  async findById(id: string): Promise<User | null> {
+    return this.ormRepository.findOne({
+      where: { id },
+    });
+  }
+
+  async updatePlanTier(userId: string, planTier: string): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { planId: planTier });
+  }
 }

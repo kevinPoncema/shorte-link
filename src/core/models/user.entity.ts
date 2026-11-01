@@ -64,6 +64,17 @@ export class User {
   planId: string | null;
 
   /**
+   * Alias de compatibilidad para el nivel de plan del usuario (`planTier`).
+   */
+  get planTier(): string | null {
+    return this.planId;
+  }
+
+  set planTier(tier: string | null) {
+    this.planId = tier;
+  }
+
+  /**
    * Relación `ManyToOne` con la definición del plan.
    */
   @ApiHideProperty()

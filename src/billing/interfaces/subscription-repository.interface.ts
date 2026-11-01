@@ -12,7 +12,27 @@ export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
  */
 export interface ISubscriptionRepository {
   /**
-   * Obtiene la suscripción activa o histórica vinculada al identificador único de un usuario.
+   * Obtiene la suscripción vinculada al identificador único de un usuario.
    */
   findByUserId(userId: string): Promise<Subscription | null>;
+
+  /**
+   * Obtiene la suscripción vinculada al identificador del cliente en Stripe (`providerCustomerId`).
+   */
+  findByCustomerId(customerId: string): Promise<Subscription | null>;
+
+  /**
+   * Obtiene la suscripción vinculada al ID de suscripción en Stripe (`providerSubscriptionId`).
+   */
+  findBySubscriptionId(subscriptionId: string): Promise<Subscription | null>;
+
+  /**
+   * Guarda o actualiza una entidad de suscripción en base de datos.
+   */
+  save(subscription: Partial<Subscription>): Promise<Subscription>;
+
+  /**
+   * Inserta o actualiza de manera idempotente la suscripción para el usuario indicado.
+   */
+  upsert(subscription: Partial<Subscription>): Promise<Subscription>;
 }
