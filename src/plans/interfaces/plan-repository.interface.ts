@@ -7,27 +7,16 @@ import { Plan } from '../models/plan.entity';
  */
 export const PLAN_REPOSITORY = Symbol('PLAN_REPOSITORY');
 
-/**
- * Atributos de dominio requeridos para registrar o inicializar un plan.
- */
+
 export interface CreatePlanAttributes {
   id: string;
   name: string;
   isActive: boolean;
 }
 
-/**
- * Contrato de repositorio de dominio para la entidad `Plan`.
- * Abstrae por completo las operaciones de persistencia de TypeORM.
- */
-export interface IPlanRepository {
-  /**
-   * Busca un plan por su identificador único o código de nivel (ej. `'DEFAULT'`, `'PRO'`).
-   */
-  findById(id: string): Promise<Plan | null>;
 
-  /**
-   * Crea y persiste una nueva entidad de plan en el almacenamiento.
-   */
+export interface IPlanRepository {
+  findById(id: string): Promise<Plan | null>;
+  findAll(): Promise<Plan[]>;
   createAndSave(attributes: CreatePlanAttributes): Promise<Plan>;
 }

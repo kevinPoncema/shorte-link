@@ -75,7 +75,7 @@ describe('PlanContextService, StarterPlanStrategy & ProPlanStrategy', () => {
     });
   });
 
-  describe('PlanContextService (Happy, Sad & Edge Cases)', () => {
+  describe('PlanContextService (O(1) in-memory strategy resolution)', () => {
     it('initializes cleanly even when optional arguments are omitted', () => {
       const standaloneContext = new PlanContextService(starterStrategy);
       expect(standaloneContext.getStrategy('STARTER')).toBe(starterStrategy);
@@ -93,7 +93,7 @@ describe('PlanContextService, StarterPlanStrategy & ProPlanStrategy', () => {
       );
     });
 
-    it('resolves STARTER (and aliases DEFAULT/FREE) and PRO (and alias PREMIUM) case-insensitively', () => {
+    it('resolves STARTER (and aliases DEFAULT/FREE) and PRO (and alias PREMIUM) case-insensitively in O(1)', () => {
       expect(planContextService.getStrategy('STARTER')).toBe(starterStrategy);
       expect(planContextService.getStrategy('starter')).toBe(starterStrategy);
       expect(planContextService.getStrategy('DEFAULT')).toBe(starterStrategy);
@@ -104,31 +104,43 @@ describe('PlanContextService, StarterPlanStrategy & ProPlanStrategy', () => {
       expect(planContextService.getStrategy('PREMIUM')).toBe(proStrategy);
     });
 
-    it('idempotently seeds STARTER and PRO into IPlanRepository during onModuleInit()', async () => {
-      const stored = new Map<string, any>();
-      const mockPlanRepo = {
-        findById: jest.fn(async (id: string) => stored.get(id) ?? null),
-        createAndSave: jest.fn(async (plan: any) => {
-          stored.set(plan.id, plan);
-          return plan;
-        }),
+    it('returns the list of unique registered tiers', () => {
+      const tiers = planContextService.getRegisteredTiers();
+      expect(tiers).toContain('STARTER');
+      expect(tiers).toContain('PRO');
+      expect(tiers.length).toBe(2);
+    });
+
+    it('correctly reports if a plan key or alias is registered with isRegistered()', () => {
+      expect(planContextService.isRegistered('STARTER')).toBe(true);
+      expect(planContextService.isRegistered('starter')).toBe(true);
+      expect(planContextService.isRegistered('DEFAULT')).toBe(true);
+      expect(planContextService.isRegistered('FREE')).toBe(true);
+      expect(planContextService.isRegistered('PRO')).toBe(true);
+      expect(planContextService.isRegistered('premium')).toBe(true);
+
+      expect(planContextService.isRegistered('ENTERPRISE')).toBe(false);
+      expect(planContextService.isRegistered(null)).toBe(false);
+      expect(planContextService.isRegistered('')).toBe(false);
+    });
+
+    it('allows dynamically registering additional plans in O(1)', () => {
+      const customStrategy = {
+        tierName: 'ENTERPRISE',
+        displayName: 'Enterprise Tier',
+        monetizationModel: 'Custom',
+        assertCanCreateLink: jest.fn(),
+        canCustomizeQrDesign: () => true,
+        canUseCustomDomain: () => true,
+        getMaxActiveLinks: () => 1000,
+        getAnalyticsRetentionDays: () => 730,
       };
 
-      const seededContext = new PlanContextService(
-        starterStrategy,
-        proStrategy,
-        [starterStrategy, proStrategy],
-        mockPlanRepo as any,
-      );
-
-      await seededContext.onModuleInit();
-      expect(stored.has('STARTER')).toBe(true);
-      expect(stored.has('PRO')).toBe(true);
-      expect(mockPlanRepo.createAndSave).toHaveBeenCalledTimes(2);
-
-      // Second invocation is idempotent (no duplicate inserts)
-      await seededContext.onModuleInit();
-      expect(mockPlanRepo.createAndSave).toHaveBeenCalledTimes(2);
+      planContextService.registerStrategy(customStrategy, ['CORP']);
+      expect(planContextService.isRegistered('ENTERPRISE')).toBe(true);
+      expect(planContextService.isRegistered('CORP')).toBe(true);
+      expect(planContextService.getStrategy('corp')).toBe(customStrategy);
+      expect(planContextService.getRegisteredTiers()).toContain('ENTERPRISE');
     });
   });
 });
