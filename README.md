@@ -1,6 +1,11 @@
-# Dynamic QR & Link Shortener API
+# Dynamic QR & Link Shortener Platform (SaaS + Hardware NFC)
 
-Backend de alta concurrencia para acortamiento de enlaces y códigos QR dinámicos construido con **NestJS 11**, **Fastify**, **PostgreSQL** (`TypeORM`), **Redis** (`ioredis`) y **OpenAPI 3.0**. Incluye un worker en segundo plano (`AnalyticsWorkerService`) con patrón orquestador que cada 15 segundos vacía en bloque la cola Redis `queue:clicks` hacia PostgreSQL (`link_events`), liberando memoria RAM de forma continua y garantizando analíticas precisas.
+Plataforma fullstack de alta concurrencia para acortamiento de enlaces, códigos QR dinámicos, analíticas avanzadas y emisión de pedidos físicos (tarjetas PVC/acrílicos con chip NFC) construida con **NestJS 11**, **Fastify**, **PostgreSQL** (`TypeORM`), **Redis** (`ioredis`), **Stripe**, **React 19** y **OpenAPI 3.0**.
+
+Incluye:
+- **Data Plane (`Fast-Path`):** Redirección `302` en sub-milisegundos vía Redis (`allkeys-lru`) y encolado no bloqueante en `queue:clicks`.
+- **Worker de Analíticas (`AnalyticsWorkerService`):** Vacía en bloque `queue:clicks` hacia PostgreSQL (`link_events`) cada 15 segundos liberando RAM continuamente.
+- **Facturación SaaS & Pedidos Físicos (`BillingModule`):** Suscripciones recurrentes (`STARTER` / `PRO`) con Stripe Checkout, Customer Portal, Webhooks HMAC (`rawBody: true`), siembra automática del catálogo `plans` (`OnModuleInit`) y emisión de órdenes de impresión QR/NFC controlada por flag booleano (`ENABLE_PHYSICAL_ORDERS` + toggle dinámico en runtime).
 
 ## Inicio Rápido (Stack Completo con Docker)
 
@@ -16,14 +21,15 @@ docker compose up -d --build
 ## Scripts
 
 ```bash
-npm run start:dev       # Backend en desarrollo con hot-reload (:3000)
-npm run dev:frontend    # Frontend React + Vite con Tailwind (:5173)
-npm run build           # Compilación del backend a dist/
-npm run build:frontend  # Compilación del frontend a frontend/dist/
-npm run start:prod      # Ejecución del backend en producción
-npm test                # Pruebas unitarias
-npm run test:cov        # Cobertura de pruebas
-npm run test:e2e        # Pruebas E2E sobre Fastify
+npm run start:dev            # Backend en desarrollo con hot-reload (:3000)
+npm run dev:frontend         # Frontend React + Vite con Tailwind (:5173)
+npm run build                # Compilación del backend a dist/
+npm run build:frontend       # Compilación del frontend a frontend/dist/
+npm run start:prod           # Ejecución del backend en producción
+npm test                     # Pruebas unitarias del backend (Jest)
+npm run test:cov             # Cobertura de pruebas del backend
+npm run test:e2e             # Pruebas E2E sobre Fastify
+npm test --prefix frontend   # Pruebas unitarias/integración del frontend (Vitest)
 ```
 
 ## Documentación
