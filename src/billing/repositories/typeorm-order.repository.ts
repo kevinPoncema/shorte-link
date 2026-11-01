@@ -21,6 +21,14 @@ export class TypeOrmOrderRepository implements IOrderRepository {
     });
   }
 
+  async findByUserId(userId: string): Promise<Order[]> {
+    return this.ormRepository.find({
+      where: { userId },
+      relations: ['items'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async findByPaymentIntentId(
     paymentIntentId: string,
   ): Promise<Order | null> {

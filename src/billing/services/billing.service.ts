@@ -224,6 +224,12 @@ export class BillingService {
   ): Promise<CheckoutResponseDto> {
     this.assertPhysicalOrdersEnabled();
 
+    if (!dto.successUrl || !dto.cancelUrl) {
+      throw new BadRequestException(
+        'successUrl y cancelUrl son obligatorios para generar una sesión de Stripe Checkout.',
+      );
+    }
+
     await this.validateLinkOwnershipForItems(user.sub, dto.items);
 
     const priceMap = this.getBaseHardwarePrices();
@@ -242,10 +248,12 @@ export class BillingService {
 
       const itemName =
         item.itemType === 'acrylic_stand'
-          ? 'Placa Acrílica con Código QR'
-          : item.itemType === 'nfc_sticker'
-            ? 'Sticker Adhesivo NFC con Código QR'
-            : `Hardware QR: ${item.itemType}`;
+          ? 'Placa Acrílica con Código QR y chip NFC'
+          : item.itemType === 'plastic_card' || item.itemType === 'nfc_card'
+            ? 'Tarjeta Plástica PVC con Código QR y chip NFC'
+            : item.itemType === 'nfc_sticker'
+              ? 'Sticker Adhesivo con Código QR y chip NFC'
+              : `Hardware QR: ${item.itemType}`;
 
       lineItems.push({
         price_data: {
@@ -404,19 +412,83 @@ export class BillingService {
   }
 
   /**
+   * Consulta el historial de pedidos de insumos físicos para un usuario.
+   */
+  async findOrdersByUserId(userId: string): Promise<Order[]> {
+    return this.orderRepository.findByUserId(userId.trim());
+  }
+
+  /**
+   * Emite una orden física directamente (Modo directo / Pruebas / Liquidación inmediata),
+   * registrándola con estado 'paid' y 'in_production'.
+   */
+  async createDirectPhysicalOrder(
+    user: JwtPayload,
+    dto: CreatePhysicalOrderCheckoutDto,
+  ): Promise<Order> {
+    this.assertPhysicalOrdersEnabled();
+    await this.validateLinkOwnershipForItems(user.sub, dto.items);
+
+    const priceMap = this.getBaseHardwarePrices();
+    let totalAmount = 0;
+
+    const orderItems = dto.items.map((item) => {
+      const unitPrice = priceMap[item.itemType];
+      if (unitPrice === undefined) {
+        throw new BadRequestException(
+          `Tipo de insumo no soportado: '${item.itemType}'. Tipos permitidos: ${Object.keys(priceMap).join(', ')}`,
+        );
+      }
+
+      totalAmount += unitPrice * item.quantity;
+
+      return {
+        linkId: item.linkId ?? null,
+        itemType: item.itemType,
+        quantity: item.quantity,
+        unitPrice,
+        specifications: item.specifications ?? null,
+      };
+    });
+
+    const newOrder: Partial<Order> = {
+      userId: user.sub,
+      totalAmount,
+      currency: 'USD',
+      paymentStatus: 'paid',
+      fulfillmentStatus: 'in_production',
+      shippingAddress: dto.shippingAddress,
+      providerPaymentIntentId: `direct_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      items: orderItems as any,
+    };
+
+    const saved = await this.orderRepository.createAndSave(newOrder);
+    this.logger.log(
+      `Orden física ${saved.id} emitida directamente y pasada a manufactura. Total: $${totalAmount}`,
+    );
+    return saved;
+  }
+
+  /**
    * Retorna los precios oficiales del backend para hardware físico.
    */
   private getBaseHardwarePrices(): Record<string, number> {
     const acrylic = Number(
       this.configService.get<string>('PRICE_ACRYLIC_STAND', '15.00'),
     );
-    const nfc = Number(
+    const plasticCard = Number(
+      this.configService.get<string>('PRICE_PLASTIC_CARD') ||
+      this.configService.get<string>('PRICE_NFC_CARD', '10.00'),
+    );
+    const nfcSticker = Number(
       this.configService.get<string>('PRICE_NFC_STICKER', '5.00'),
     );
 
     return {
       acrylic_stand: Number.isNaN(acrylic) ? 15.0 : acrylic,
-      nfc_sticker: Number.isNaN(nfc) ? 5.0 : nfc,
+      plastic_card: Number.isNaN(plasticCard) ? 10.0 : plasticCard,
+      nfc_card: Number.isNaN(plasticCard) ? 10.0 : plasticCard,
+      nfc_sticker: Number.isNaN(nfcSticker) ? 5.0 : nfcSticker,
     };
   }
 

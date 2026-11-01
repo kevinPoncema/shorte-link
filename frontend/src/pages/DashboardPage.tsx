@@ -5,9 +5,14 @@ import { LinkCard } from '../components/LinkCard';
 import { QrPreviewModal } from '../components/QrPreviewModal';
 import { EditLinkModal } from '../components/EditLinkModal';
 import { LinkStatsModal } from '../components/LinkStatsModal';
-import { RefreshCw, Link as LinkIcon, AlertCircle } from 'lucide-react';
+import { PhysicalOrderModal } from '../components/PhysicalOrderModal';
+import { RefreshCw, Link as LinkIcon, AlertCircle, Sparkles } from 'lucide-react';
 
-export const DashboardPage: React.FC = () => {
+interface DashboardPageProps {
+  onOpenPlans?: () => void;
+}
+
+export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenPlans }) => {
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [currentUser] = useState<User | null>(() => api.getCurrentUser());
   const [loading, setLoading] = useState(true);
@@ -15,6 +20,7 @@ export const DashboardPage: React.FC = () => {
   const [selectedLinkForQr, setSelectedLinkForQr] = useState<LinkItem | null>(null);
   const [selectedLinkForEdit, setSelectedLinkForEdit] = useState<LinkItem | null>(null);
   const [selectedLinkForStats, setSelectedLinkForStats] = useState<LinkItem | null>(null);
+  const [selectedLinkForPhysical, setSelectedLinkForPhysical] = useState<LinkItem | null>(null);
 
   const fetchLinks = async () => {
     setLoading(true);
@@ -49,6 +55,33 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      {/* Plan Starter Upgrade Banner */}
+      {currentUser && (currentUser.plan || 'STARTER').toUpperCase() !== 'PRO' && (
+        <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-purple-50/40 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-200">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-800">
+                Plan Starter Activo (Límite: 5 enlaces)
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Obtén enlaces ilimitados, personalización de colores de QR y analíticas avanzadas con el Plan PRO.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onOpenPlans}
+            data-testid="dashboard-upgrade-btn"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors shrink-0"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>Ver Planes & Mejorar</span>
+          </button>
+        </div>
+      )}
+
       {/* Create Link Form */}
       <CreateLinkForm onLinkCreated={handleLinkCreated} />
 
@@ -109,6 +142,7 @@ export const DashboardPage: React.FC = () => {
                 onDelete={handleLinkDeleted}
                 onOpenModal={(item) => setSelectedLinkForQr(item)}
                 onOpenStats={(item) => setSelectedLinkForStats(item)}
+                onOrderPhysical={(item) => setSelectedLinkForPhysical(item)}
               />
             ))}
           </div>
@@ -133,6 +167,13 @@ export const DashboardPage: React.FC = () => {
         link={selectedLinkForStats}
         currentUser={currentUser}
         onClose={() => setSelectedLinkForStats(null)}
+      />
+
+      {/* Modal para emitir y solicitar orden de hardware físico (Placa/Tarjeta con NFC y QR) */}
+      <PhysicalOrderModal
+        isOpen={Boolean(selectedLinkForPhysical)}
+        link={selectedLinkForPhysical}
+        onClose={() => setSelectedLinkForPhysical(null)}
       />
     </main>
   );

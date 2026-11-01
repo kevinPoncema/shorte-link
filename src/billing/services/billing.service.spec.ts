@@ -114,6 +114,9 @@ describe('BillingService, Repositories, Stripe Integration & BillingController',
       findById: jest.fn(async (id: string) => {
         return storedOrders.find((o) => o.id === id) ?? null;
       }),
+      findByUserId: jest.fn(async (userId: string) => {
+        return storedOrders.filter((o) => o.userId === userId);
+      }),
       findByPaymentIntentId: jest.fn(async (pi: string) => {
         return storedOrders.find((o) => o.providerPaymentIntentId === pi) ?? null;
       }),
@@ -402,6 +405,60 @@ describe('BillingService, Repositories, Stripe Integration & BillingController',
           cancelUrl: 'https://app.com/orders/cancel',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('emits a direct physical order and calculates total correctly', async () => {
+      const order = await billingController.createDirectPhysicalOrder(userWithSub, {
+        items: [
+          {
+            linkId: 'link-abc',
+            itemType: 'plastic_card',
+            quantity: 3,
+            specifications: { color: 'matte_black', chips: 'NTAG213' },
+          },
+          {
+            linkId: 'link-abc',
+            itemType: 'acrylic_stand',
+            quantity: 1,
+            specifications: { color: 'transparent' },
+          },
+        ],
+        shippingAddress: {
+          fullName: 'Juan Perez',
+          addressLine1: 'Col. Palmira',
+          city: 'Tegucigalpa',
+          phone: '+50499887766',
+        },
+      });
+
+      expect(order).toBeDefined();
+      expect(order.paymentStatus).toBe('paid');
+      expect(order.fulfillmentStatus).toBe('in_production');
+      // 3 * 10 + 1 * 15 = 45.00
+      expect(order.totalAmount).toBe(45);
+    });
+
+    it('retrieves user physical orders list', async () => {
+      await billingController.createDirectPhysicalOrder(userWithSub, {
+        items: [
+          {
+            linkId: 'link-abc',
+            itemType: 'acrylic_stand',
+            quantity: 1,
+          },
+        ],
+        shippingAddress: {
+          fullName: 'Juan Perez',
+          addressLine1: 'Col. Palmira',
+          city: 'Tegucigalpa',
+          phone: '+50499887766',
+        },
+      });
+
+      const orders = await billingController.getOrders(userWithSub);
+      expect(Array.isArray(orders)).toBe(true);
+      expect(orders.length).toBeGreaterThan(0);
+      expect(orders[0].userId).toBe(userWithSub.sub);
     });
   });
 

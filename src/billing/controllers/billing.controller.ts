@@ -196,6 +196,44 @@ export class BillingController {
   }
 
   /**
+   * Emite una orden física directamente en estado 'paid' e 'in_production'.
+   */
+  @Post('orders/direct')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth(JWT_BEARER_AUTH)
+  @ApiOperation({
+    summary: 'Emitir orden de insumos físicos directamente (Modo Directo / Pruebas)',
+    description:
+      'Registra y emite la orden física pasando directamente a cola de manufactura.',
+  })
+  @ApiOkResponse({
+    description: 'Orden física emitida exitosamente',
+  })
+  async createDirectPhysicalOrder(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreatePhysicalOrderCheckoutDto,
+  ) {
+    return this.billingService.createDirectPhysicalOrder(user, dto);
+  }
+
+  /**
+   * Consulta el historial de órdenes de insumos físicos del usuario autenticado.
+   */
+  @Get('orders')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth(JWT_BEARER_AUTH)
+  @ApiOperation({
+    summary: 'Listar órdenes de insumos físicos del usuario',
+    description: 'Retorna todas las órdenes de placas y tarjetas NFC emitidas por el cliente.',
+  })
+  @ApiOkResponse({
+    description: 'Lista de órdenes físicas',
+  })
+  async getOrders(@CurrentUser() user: JwtPayload) {
+    return this.billingService.findOrdersByUserId(user.sub);
+  }
+
+  /**
    * Receptor público de eventos de Stripe Webhooks.
    */
   @Post('webhook')

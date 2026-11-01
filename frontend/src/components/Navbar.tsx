@@ -5,10 +5,16 @@ import { QrCode, LogOut, Sparkles } from 'lucide-react';
 interface NavbarProps {
   user: User | null;
   onLogout: () => void;
+  onOpenPlans?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
-  const planName = user?.plan || 'STARTER';
+export const Navbar: React.FC<NavbarProps> = ({
+  user,
+  onLogout,
+  onOpenPlans,
+}) => {
+  const planName = (user?.plan || 'STARTER').toUpperCase();
+  const isPro = planName === 'PRO';
 
   const handleLogout = () => {
     api.clearSession();
@@ -41,11 +47,20 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
             </div>
           )}
 
-          {/* Plan Badge (req.user.plan) */}
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50/70 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-            <Sparkles className="h-3 w-3 text-indigo-500" />
+          {/* Plan Badge (Clickable para gestionar planes) */}
+          <button
+            onClick={onOpenPlans}
+            data-testid="navbar-plan-badge"
+            title="Administrar plan y suscripción"
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+              isPro
+                ? 'border-indigo-300 bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 shadow-sm shadow-indigo-200'
+                : 'border-indigo-200 bg-indigo-50/80 text-indigo-700 hover:bg-indigo-100 focus:ring-indigo-500'
+            }`}
+          >
+            <Sparkles className={`h-3 w-3 ${isPro ? 'text-amber-300' : 'text-indigo-500'}`} />
             <span>{planName}</span>
-          </div>
+          </button>
 
           {/* Logout Button */}
           <button

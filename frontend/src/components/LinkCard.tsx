@@ -12,6 +12,7 @@ import {
   Tag,
   Link2,
   BarChart3,
+  CreditCard,
 } from 'lucide-react';
 
 interface LinkCardProps {
@@ -20,6 +21,7 @@ interface LinkCardProps {
   onDelete: (id: string) => void;
   onOpenModal: (link: LinkItem) => void;
   onOpenStats: (link: LinkItem) => void;
+  onOrderPhysical?: (link: LinkItem) => void;
 }
 
 export const LinkCard: React.FC<LinkCardProps> = ({
@@ -28,6 +30,7 @@ export const LinkCard: React.FC<LinkCardProps> = ({
   onDelete,
   onOpenModal,
   onOpenStats,
+  onOrderPhysical,
 }) => {
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -195,6 +198,19 @@ export const LinkCard: React.FC<LinkCardProps> = ({
           <BarChart3 className="h-3.5 w-3.5 text-indigo-600" />
           <span>Métricas</span>
         </button>
+
+        {/* Botón Pedir Físico NFC */}
+        {onOrderPhysical && (
+          <button
+            onClick={() => onOrderPhysical(link)}
+            data-testid={`order-physical-btn-${link.id}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50/70 px-2.5 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 hover:border-purple-300 transition-colors focus:outline-none"
+            title="Pedir placa acrílica o tarjeta plástica NFC con este código QR grabado"
+          >
+            <CreditCard className="h-3.5 w-3.5 text-purple-600" />
+            <span>Pedir Físico NFC</span>
+          </button>
+        )}
 
         {/* Botón Editar parámetros / destino */}
         <button

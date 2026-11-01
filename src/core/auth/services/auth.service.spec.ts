@@ -16,6 +16,7 @@ import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { IUserRepository } from '../interfaces/user-repository.interface';
 import { TypeOrmUserRepository } from '../repositories/typeorm-user.repository';
 import { AuthService, DEFAULT_PLAN_ID } from './auth.service';
+import { UsersService } from './users.service';
 
 describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
   const jwtSecret = 'unit-test-secret';
@@ -23,6 +24,7 @@ describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
   let configService: ConfigService;
   let userRepository: IUserRepository;
   let planRepository: IPlanRepository;
+  let usersService: UsersService;
   let authService: AuthService;
   let authController: AuthController;
   let guard: JwtAuthGuard;
@@ -102,7 +104,8 @@ describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
       configService,
     );
 
-    authController = new AuthController(authService);
+    usersService = new UsersService(userRepository);
+    authController = new AuthController(authService, usersService);
     guard = new JwtAuthGuard(jwtService, configService);
   });
 
@@ -259,6 +262,25 @@ describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
       await expect(
         guard.canActivate(buildContext(`Bearer ${expiredToken}`).ctx),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('GET /auth/me (User Profile)', () => {
+    it('returns the profile of the authenticated user with their current plan', async () => {
+      const registered = await authController.register({
+        email: 'profile@test.com',
+        password: 'Password123!',
+      });
+
+      const profile = await authController.getProfile({
+        sub: registered.user.id,
+        email: registered.user.email,
+        plan: registered.user.plan,
+      });
+
+      expect(profile.id).toBe(registered.user.id);
+      expect(profile.email).toBe('profile@test.com');
+      expect(profile.plan).toBe(DEFAULT_PLAN_ID);
     });
   });
 });

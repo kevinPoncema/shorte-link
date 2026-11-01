@@ -154,19 +154,19 @@ export class CreatePhysicalOrderCheckoutDto {
   @Type(() => ShippingAddressDto)
   shippingAddress: ShippingAddressDto;
 
-  @ApiProperty({
-    description: 'URL de retorno tras completar el pago',
+  @ApiPropertyOptional({
+    description: 'URL de retorno tras completar el pago (Requerido para Stripe)',
     example: 'https://midominio.com/orders/success',
   })
   @IsUrl({ require_tld: false })
-  @IsNotEmpty()
-  successUrl: string;
+  @IsOptional()
+  successUrl?: string;
 
-  @ApiProperty({
-    description: 'URL de retorno si el usuario cancela la orden',
+  @ApiPropertyOptional({
+    description: 'URL de retorno si el usuario cancela la orden (Requerido para Stripe)',
     example: 'https://midominio.com/orders/cancelled',
   })
   @IsUrl({ require_tld: false })
-  @IsNotEmpty()
-  cancelUrl: string;
+  @IsOptional()
+  cancelUrl?: string;
 }

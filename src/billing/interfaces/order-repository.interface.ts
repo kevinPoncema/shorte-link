@@ -15,6 +15,11 @@ export interface IOrderRepository {
   findById(id: string): Promise<Order | null>;
 
   /**
+   * Obtiene todas las órdenes emitidas por un usuario ordenadas por fecha reciente.
+   */
+  findByUserId(userId: string): Promise<Order[]>;
+
+  /**
    * Busca una orden por su ID de transacción de pasarela (`providerPaymentIntentId`).
    */
   findByPaymentIntentId(paymentIntentId: string): Promise<Order | null>;

@@ -84,6 +84,91 @@ export interface LinkStatsResponse {
   breakdowns: StatsBreakdowns;
 }
 
+export interface Subscription {
+  id: string;
+  userId: string;
+  providerName: string;
+  providerCustomerId: string;
+  providerSubscriptionId?: string | null;
+  providerPriceId?: string | null;
+  status: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete';
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubscriptionResponse {
+  subscription: Subscription | null;
+}
+
+export interface CheckoutResponse {
+  checkoutUrl: string;
+}
+
+export interface PortalResponse {
+  url: string;
+}
+
+export interface PlanChangeResponse {
+  success: boolean;
+  message: string;
+  plan: string;
+}
+
+export interface ShippingAddress {
+  fullName: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  phone: string;
+  notes?: string;
+}
+
+export interface PhysicalOrderItem {
+  id?: string;
+  linkId?: string;
+  itemType: string;
+  quantity: number;
+  unitPrice?: number;
+  specifications?: Record<string, any>;
+}
+
+export interface CreatePhysicalOrderPayload {
+  items: PhysicalOrderItem[];
+  shippingAddress: ShippingAddress;
+  successUrl: string;
+  cancelUrl: string;
+}
+
+export interface OrderItemRecord {
+  id: string;
+  orderId: string;
+  linkId: string | null;
+  itemType: string;
+  quantity: number;
+  unitPrice: number;
+  specifications: Record<string, any> | null;
+}
+
+export interface OrderRecord {
+  id: string;
+  userId: string;
+  providerPaymentIntentId: string | null;
+  totalAmount: number;
+  currency: string;
+  paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
+  fulfillmentStatus: 'unfulfilled' | 'in_production' | 'shipped' | 'delivered';
+  shippingAddress: ShippingAddress | null;
+  items: OrderItemRecord[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
@@ -233,6 +318,84 @@ class ApiService {
   async getLinkStats(linkId: string, period?: string): Promise<LinkStatsResponse> {
     const query = period ? `?period=${encodeURIComponent(period)}` : '';
     return this.request<LinkStatsResponse>(`/links/${linkId}/stats${query}`);
+  }
+
+  // --- User Profile ---
+  async getMe(): Promise<User> {
+    const user = await this.request<User>('/auth/me');
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    }
+    return user;
+  }
+
+  // --- Billing endpoints ---
+  async getSubscription(): Promise<Subscription | null> {
+    const data = await this.request<SubscriptionResponse>('/billing/subscription');
+    return data.subscription;
+  }
+
+  async createSubscriptionCheckout(payload: {
+    priceId?: string;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<CheckoutResponse> {
+    return this.request<CheckoutResponse>('/billing/checkout/subscription', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getCustomerPortal(returnUrl?: string): Promise<PortalResponse> {
+    const query = returnUrl ? `?returnUrl=${encodeURIComponent(returnUrl)}` : '';
+    return this.request<PortalResponse>(`/billing/portal${query}`);
+  }
+
+  async cancelSubscription(): Promise<PlanChangeResponse> {
+    const res = await this.request<PlanChangeResponse>('/billing/cancel', {
+      method: 'POST',
+    });
+    const current = this.getCurrentUser();
+    if (current) {
+      current.plan = res.plan || 'STARTER';
+      localStorage.setItem('user', JSON.stringify(current));
+    }
+    return res;
+  }
+
+  async simulateUpgradeToPro(): Promise<PlanChangeResponse> {
+    const res = await this.request<PlanChangeResponse>('/billing/simulate-upgrade', {
+      method: 'POST',
+    });
+    const current = this.getCurrentUser();
+    if (current) {
+      current.plan = res.plan || 'PRO';
+      localStorage.setItem('user', JSON.stringify(current));
+    }
+    return res;
+  }
+
+  // --- Physical Orders endpoints ---
+  async createPhysicalOrderCheckout(
+    payload: CreatePhysicalOrderPayload,
+  ): Promise<CheckoutResponse> {
+    return this.request<CheckoutResponse>('/billing/checkout/physical', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async createDirectPhysicalOrder(
+    payload: CreatePhysicalOrderPayload,
+  ): Promise<OrderRecord> {
+    return this.request<OrderRecord>('/billing/orders/direct', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getPhysicalOrders(): Promise<OrderRecord[]> {
+    return this.request<OrderRecord[]>('/billing/orders');
   }
 }
 
