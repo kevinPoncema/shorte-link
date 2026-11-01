@@ -6,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Optional,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -37,12 +38,14 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { Link } from '../../models/link.entity';
 import { CreateLinkDto } from '../dto/create-link.dto';
+import { LinkStatsResponseDto } from '../dto/link-stats-response.dto';
 import { UpdateLinkDto } from '../dto/update-link.dto';
+import { LinkStatsService } from '../services/link-stats.service';
 import { LinksService } from '../services/links.service';
 
 /**
- * Controlador autenticado del Control Plane para gestión CRUD de enlaces cortos
- * y renderizado de códigos QR dinámicos (`/links`).
+ * Controlador autenticado del Control Plane para gestión CRUD de enlaces cortos,
+ * analíticas de uso y renderizado de códigos QR dinámicos (`/links`).
  */
 @ApiTags('Links & QR')
 @ApiBearerAuth(JWT_BEARER_AUTH)
@@ -52,7 +55,11 @@ import { LinksService } from '../services/links.service';
 @Controller('links')
 @UseGuards(JwtAuthGuard)
 export class LinksController {
-  constructor(private readonly linksService: LinksService) {}
+  constructor(
+    private readonly linksService: LinksService,
+    @Optional()
+    private readonly linkStatsService?: LinkStatsService,
+  ) {}
 
   /**
    * Crea un enlace corto validando las cuotas del plan del usuario y precalienta Redis.
@@ -176,6 +183,49 @@ export class LinksController {
 
     const qr = await this.linksService.generateQrCode(user.sub, id, format);
     reply.header('Content-Type', qr.contentType).send(qr.data);
+  }
+
+  /**
+   * Obtiene las estadísticas agregadas (`summary`, `timeline` y `breakdowns`) de un enlace
+   * acotadas por la retención del plan activo del usuario (`STARTER`: 7d, `PRO`: hasta 365d).
+   */
+  @Get(':id/stats')
+  @ApiOperation({
+    summary: 'Obtener estadísticas y desgloses analíticos de un enlace',
+    description:
+      'Ejecuta agregaciones optimizadas sobre `link_events` acotadas por la retención del plan (`PlanStrategy.getAnalyticsRetentionDays()`), agrupando el top de sistemas operativos, navegadores, países y fuentes de tráfico más la categoría "Others".',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Identificador UUID v4 del enlace',
+    format: 'uuid',
+  })
+  @ApiQuery({
+    name: 'period',
+    required: false,
+    example: '7d',
+    description:
+      'Ventana de tiempo solicitada (ej. `7d`, `30d`, `90d`, `365d`). Se acota automáticamente al límite máximo del plan del usuario.',
+  })
+  @ApiOkResponse({
+    description: 'Estadísticas agregadas del enlace',
+    type: LinkStatsResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'UUID inválido o formato de periodo inválido',
+  })
+  @ApiNotFoundResponse({
+    description: 'Enlace no encontrado o perteneciente a otra cuenta',
+  })
+  async getStats(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('period') period?: string,
+  ): Promise<LinkStatsResponseDto> {
+    if (!this.linkStatsService) {
+      throw new BadRequestException('LinkStatsService is not initialized');
+    }
+    return this.linkStatsService.getLinkStats(user, id, period);
   }
 
   /**

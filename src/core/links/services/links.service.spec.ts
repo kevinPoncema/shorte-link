@@ -48,13 +48,19 @@ describe('LinksService, TypeOrmLinkRepository, LinksController & RedirectControl
   const defaultUser: JwtPayload = {
     sub: '22222222-2222-4222-8222-222222222222',
     email: 'dev@empresa.com',
-    plan: 'DEFAULT',
+    plan: 'PRO',
+  };
+
+  const starterUser: JwtPayload = {
+    sub: '33333333-3333-4333-8333-333333333333',
+    email: 'starter@empresa.com',
+    plan: 'STARTER',
   };
 
   const otherUser: JwtPayload = {
     sub: '99999999-9999-4999-8999-999999999999',
     email: 'other@empresa.com',
-    plan: 'DEFAULT',
+    plan: 'PRO',
   };
 
   beforeEach(() => {
@@ -203,28 +209,91 @@ describe('LinksService, TypeOrmLinkRepository, LinksController & RedirectControl
       ).rejects.toThrow(InternalServerErrorException);
     });
 
-    it('enforces total quota, max active links quota, and QR customization rules (while allowing empty qrConfig {})', async () => {
+    it('enforces STARTER (max 3 active links, B&W QR, no custom domain) vs PRO rules and custom strategies', async () => {
+      // STARTER sad path: custom QR color or logoUrl blocked
+      await expect(
+        linksService.createLink(starterUser, {
+          targetUrl: 'https://starter.com',
+          qrConfig: { foregroundColor: '#FF0000' },
+        }),
+      ).rejects.toThrow(ForbiddenException);
+
+      await expect(
+        linksService.createLink(starterUser, {
+          targetUrl: 'https://starter.com',
+          qrConfig: { logoUrl: 'https://cdn.empresa.com/logo.svg' },
+        }),
+      ).rejects.toThrow(ForbiddenException);
+
+      // STARTER sad path: custom CNAME domain blocked
+      await expect(
+        linksService.createLink(starterUser, {
+          targetUrl: 'https://starter.com',
+          customDomain: 'qr.starter.com',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+
+      // STARTER happy path: up to 3 active links with standard B&W (#000000 / #FFFFFF) or empty qrConfig
+      const s1 = await linksService.createLink(starterUser, {
+        targetUrl: 'https://starter-1.com',
+        qrConfig: { foregroundColor: '#000000', backgroundColor: '#FFFFFF' },
+      });
+      await linksService.createLink(starterUser, {
+        targetUrl: 'https://starter-2.com',
+        qrConfig: {},
+      });
+      await linksService.createLink(starterUser, {
+        targetUrl: 'https://starter-3.com',
+      });
+
+      // STARTER sad path: 4th link exceeds Starter max 3 quota
+      await expect(
+        linksService.createLink(starterUser, {
+          targetUrl: 'https://starter-4.com',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+
+      // STARTER sad path on update: custom domain or non-standard QR color blocked
+      await expect(
+        linksService.updateLink(starterUser, s1.id, {
+          customDomain: 'qr.starter.com',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+
+      // PRO happy path: custom brand colors, logoUrl, and customDomain allowed
+      const proLink = await linksService.createLink(defaultUser, {
+        targetUrl: 'https://pro-brand.com',
+        customDomain: 'qr.probrand.com',
+        qrConfig: {
+          foregroundColor: '#1E293B',
+          backgroundColor: '#F8FAFC',
+          logoUrl: 'https://cdn.probrand.com/logo.svg',
+        },
+      });
+      expect(proLink.qrConfig.logoUrl).toBe(
+        'https://cdn.probrand.com/logo.svg',
+      );
+
       const strictStrategy: PlanStrategy = {
         tierName: 'STRICT',
+        displayName: 'Strict Custom Tier',
+        monetizationModel: 'Custom',
         assertCanCreateLink(currentCount: number) {
           if (currentCount >= 3) {
             throw new ForbiddenException('Total quota exceeded');
           }
         },
         canCustomizeQrDesign: () => false,
+        canUseCustomDomain: () => false,
         getMaxActiveLinks: () => 1,
         getAnalyticsRetentionDays: () => 14,
       };
       planContextService.registerStrategy(strictStrategy);
-      const strictUser: JwtPayload = { ...defaultUser, plan: 'STRICT' };
-
-      // Sad path: custom QR design blocked
-      await expect(
-        linksService.createLink(strictUser, {
-          targetUrl: 'https://example.com',
-          qrConfig: { foregroundColor: '#FF0000' },
-        }),
-      ).rejects.toThrow(ForbiddenException);
+      const strictUser: JwtPayload = {
+        sub: '44444444-4444-4444-8444-444444444444',
+        email: 'strict@empresa.com',
+        plan: 'STRICT',
+      };
 
       // Edge case: empty qrConfig {} is NOT treated as custom design
       const first = await linksService.createLink(strictUser, {
@@ -260,7 +329,7 @@ describe('LinksService, TypeOrmLinkRepository, LinksController & RedirectControl
         }),
       ).resolves.toMatchObject({ targetUrl: 'https://second-updated.com' });
 
-      // Sad path: updating qrConfig with custom color on STRICT plan throws ForbiddenException
+      // Sad path: updating qrConfig with custom margin on STRICT plan throws ForbiddenException
       await expect(
         linksService.updateLink(strictUser, second.id, {
           qrConfig: { margin: 4 },

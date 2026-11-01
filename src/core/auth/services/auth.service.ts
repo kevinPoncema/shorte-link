@@ -23,8 +23,9 @@ import {
 
 /**
  * Identificador del plan asignado automáticamente a toda cuenta nueva durante el registro.
+ * Corresponde al **Plan Starter (Gratuito / Físico)**.
  */
-export const DEFAULT_PLAN_ID = 'DEFAULT';
+export const DEFAULT_PLAN_ID = 'STARTER';
 
 export type AuthResponse = AuthResponseDto;
 
@@ -108,14 +109,14 @@ export class AuthService {
   }
 
   /**
-   * Garantiza de forma idempotente que el plan `'DEFAULT'` exista en el repositorio de planes.
+   * Garantiza de forma idempotente que el plan `'STARTER'` exista en el repositorio de planes.
    */
   private async ensureDefaultPlanExists(): Promise<void> {
     const existingPlan = await this.planRepository.findById(DEFAULT_PLAN_ID);
     if (!existingPlan) {
       await this.planRepository.createAndSave({
         id: DEFAULT_PLAN_ID,
-        name: 'Default',
+        name: 'Plan Starter (Gratuito / Físico)',
         isActive: true,
       });
     }

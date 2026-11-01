@@ -112,7 +112,7 @@ export class LinksService {
    */
   async createLink(user: JwtPayload, dto: CreateLinkDto): Promise<Link> {
     const strategy = this.resolvePlanStrategy(user.plan);
-    await this.enforceCreationQuotas(user.sub, strategy, dto.qrConfig);
+    await this.enforceCreationQuotas(user.sub, strategy, dto);
 
     const shortCode = await this.resolveOrAllocateShortCode(dto.shortCode);
     const savedLink = await this.persistNewLink(user.sub, shortCode, dto);
@@ -245,11 +245,12 @@ export class LinksService {
   private async enforceCreationQuotas(
     userId: string,
     strategy: PlanStrategy,
-    qrConfig?: QrConfig,
+    dto: Pick<CreateLinkDto, 'qrConfig' | 'customDomain'>,
   ): Promise<void> {
     await this.assertTotalLinksQuota(userId, strategy);
     await this.assertActiveLinksQuota(userId, strategy);
-    this.assertQrCustomizationAllowed(qrConfig, strategy);
+    this.assertQrCustomizationAllowed(dto.qrConfig, strategy);
+    this.assertCustomDomainAllowed(dto.customDomain, strategy);
   }
 
   /**
@@ -284,19 +285,65 @@ export class LinksService {
   }
 
   /**
-   * Comprueba si el plan permite personalizar el diseño del código QR cuando se envían opciones.
+   * Comprueba si el plan permite personalizar el diseño del código QR cuando se envían opciones no estándar.
    */
   private assertQrCustomizationAllowed(
     qrConfig: QrConfig | undefined,
     strategy: PlanStrategy,
   ): void {
     if (
-      qrConfig &&
-      Object.keys(qrConfig).length > 0 &&
+      this.hasCustomQrDesignParameters(qrConfig) &&
       !strategy.canCustomizeQrDesign()
     ) {
       throw new ForbiddenException(
         `Custom QR design is not available on plan ${strategy.tierName}`,
+      );
+    }
+  }
+
+  /**
+   * Determina si la configuración QR contiene parámetros personalizados distintos al blanco y negro estándar.
+   */
+  private hasCustomQrDesignParameters(qrConfig?: QrConfig): boolean {
+    if (!qrConfig || Object.keys(qrConfig).length === 0) {
+      return false;
+    }
+
+    const hasCustomForeground =
+      qrConfig.foregroundColor !== undefined &&
+      qrConfig.foregroundColor.toUpperCase() !== '#000000';
+    const hasCustomBackground =
+      qrConfig.backgroundColor !== undefined &&
+      qrConfig.backgroundColor.toUpperCase() !== '#FFFFFF';
+    const hasCustomLogo = Boolean(qrConfig.logoUrl);
+    const hasOtherCustomOptions =
+      qrConfig.format !== undefined ||
+      qrConfig.margin !== undefined ||
+      qrConfig.width !== undefined ||
+      qrConfig.errorCorrectionLevel !== undefined;
+
+    return (
+      hasCustomForeground ||
+      hasCustomBackground ||
+      hasCustomLogo ||
+      hasOtherCustomOptions
+    );
+  }
+
+  /**
+   * Comprueba si el plan permite configurar un subdominio CNAME propio.
+   */
+  private assertCustomDomainAllowed(
+    customDomain: string | undefined,
+    strategy: PlanStrategy,
+  ): void {
+    if (
+      customDomain &&
+      customDomain.trim().length > 0 &&
+      !strategy.canUseCustomDomain()
+    ) {
+      throw new ForbiddenException(
+        `Custom domain (CNAME) is not available on plan ${strategy.tierName}`,
       );
     }
   }
@@ -375,6 +422,10 @@ export class LinksService {
     userId: string,
     strategy: PlanStrategy,
   ): Promise<void> {
+    if (dto.customDomain !== undefined) {
+      this.assertCustomDomainAllowed(dto.customDomain, strategy);
+    }
+
     if (dto.qrConfig !== undefined) {
       this.applyQrConfigUpdate(link, dto.qrConfig, strategy);
     }

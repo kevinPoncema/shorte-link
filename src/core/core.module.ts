@@ -12,8 +12,11 @@ import { AuthService } from './auth/services/auth.service';
 import { CacheService, REDIS_CLIENT } from './cache/cache.service';
 import { LinksController } from './links/controllers/links.controller';
 import { RedirectController } from './links/controllers/redirect.controller';
+import { LINK_EVENT_REPOSITORY } from './links/interfaces/link-event-repository.interface';
 import { LINK_REPOSITORY } from './links/interfaces/link-repository.interface';
+import { TypeOrmLinkEventRepository } from './links/repositories/typeorm-link-event.repository';
 import { TypeOrmLinkRepository } from './links/repositories/typeorm-link.repository';
+import { LinkStatsService } from './links/services/link-stats.service';
 import { LinksService } from './links/services/links.service';
 import { LinkEvent } from './models/link-event.entity';
 import { Link } from './models/link.entity';
@@ -22,7 +25,8 @@ import { User } from './models/user.entity';
 /**
  * Módulo central de negocio (`CoreModule`).
  * Encapsula la autenticación JWT stateless, la administración de enlaces y QR dinámicos,
- * los adaptadores de repositorio (`USER_REPOSITORY`, `LINK_REPOSITORY`), la capa en memoria
+ * las estadísticas analíticas (`LinkStatsService`), los adaptadores de repositorio
+ * (`USER_REPOSITORY`, `LINK_REPOSITORY`, `LINK_EVENT_REPOSITORY`), la capa en memoria
  * Redis (`ioredis`) y el Fast-Path público de redirección `GET /:shortCode`.
  */
 @Module({
@@ -71,19 +75,26 @@ import { User } from './models/user.entity';
       provide: LINK_REPOSITORY,
       useClass: TypeOrmLinkRepository,
     },
+    {
+      provide: LINK_EVENT_REPOSITORY,
+      useClass: TypeOrmLinkEventRepository,
+    },
     CacheService,
     AuthService,
     JwtAuthGuard,
     LinksService,
+    LinkStatsService,
   ],
   exports: [
     USER_REPOSITORY,
     LINK_REPOSITORY,
+    LINK_EVENT_REPOSITORY,
     CacheService,
     AuthService,
     JwtAuthGuard,
     JwtModule,
     LinksService,
+    LinkStatsService,
     TypeOrmModule,
   ],
 })

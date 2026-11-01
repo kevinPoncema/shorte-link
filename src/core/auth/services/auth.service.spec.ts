@@ -129,7 +129,7 @@ describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
       expect(decoded).toMatchObject({
         sub: first.user.id,
         email: 'cliente@empresa.com',
-        plan: 'DEFAULT',
+        plan: DEFAULT_PLAN_ID,
       });
 
       await authController.register({
@@ -155,7 +155,7 @@ describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
   });
 
   describe('Login (Happy, Sad & Edge Cases)', () => {
-    it('authenticates valid credentials with trimmed/uppercase email and falls back to DEFAULT when planId is null', async () => {
+    it('authenticates valid credentials with trimmed/uppercase email and falls back to STARTER when planId is null', async () => {
       await authService.register({
         email: 'nullplan@empresa.com',
         password: 'CorrectPassword123!',
@@ -168,11 +168,11 @@ describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
         password: 'CorrectPassword123!',
       });
 
-      expect(loginRes.user.plan).toBe('DEFAULT');
+      expect(loginRes.user.plan).toBe(DEFAULT_PLAN_ID);
       const decoded = await jwtService.verifyAsync<JwtPayload>(
         loginRes.accessToken,
       );
-      expect(decoded.plan).toBe('DEFAULT');
+      expect(decoded.plan).toBe(DEFAULT_PLAN_ID);
     });
 
     it('rejects wrong password or unregistered email with UnauthorizedException', async () => {
@@ -224,7 +224,7 @@ describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
       expect(req.user).toMatchObject({
         sub: user.id,
         email: 'guard@empresa.com',
-        plan: 'DEFAULT',
+        plan: DEFAULT_PLAN_ID,
       });
     });
 

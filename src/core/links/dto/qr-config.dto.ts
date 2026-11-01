@@ -3,6 +3,7 @@ import {
   IsIn,
   IsInt,
   IsOptional,
+  IsUrl,
   Matches,
   Max,
   Min,
@@ -34,6 +35,18 @@ export class QrConfigDto implements QrConfig {
     message: 'backgroundColor must be a valid hex color (e.g. #FFFFFF)',
   })
   backgroundColor?: string;
+
+  @ApiPropertyOptional({
+    description: 'URL de logo SVG/PNG opcional para mostrar al centro del código QR (Plan PRO)',
+    format: 'uri',
+    example: 'https://cdn.empresa.com/brand-logo.svg',
+  })
+  @IsOptional()
+  @IsUrl(
+    { require_protocol: true, protocols: ['http', 'https'] },
+    { message: 'logoUrl must be a valid HTTP or HTTPS URL' },
+  )
+  logoUrl?: string;
 
   @ApiPropertyOptional({
     description: 'Formato de renderizado por defecto del código QR',

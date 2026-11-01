@@ -20,6 +20,7 @@ import { User } from './user.entity';
 export interface QrConfig {
   foregroundColor?: string;
   backgroundColor?: string;
+  logoUrl?: string;
   format?: 'png' | 'svg';
   margin?: number;
   width?: number;

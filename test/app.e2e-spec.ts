@@ -26,8 +26,13 @@ import {
 } from '../src/core/cache/cache.service';
 import { LinksController } from '../src/core/links/controllers/links.controller';
 import { RedirectController } from '../src/core/links/controllers/redirect.controller';
+import {
+  ILinkEventRepository,
+  LINK_EVENT_REPOSITORY,
+} from '../src/core/links/interfaces/link-event-repository.interface';
 import { LINK_REPOSITORY } from '../src/core/links/interfaces/link-repository.interface';
 import { TypeOrmLinkRepository } from '../src/core/links/repositories/typeorm-link.repository';
+import { LinkStatsService } from '../src/core/links/services/link-stats.service';
 import { LinksService } from '../src/core/links/services/links.service';
 import { Link } from '../src/core/models/link.entity';
 import { User } from '../src/core/models/user.entity';
@@ -37,7 +42,8 @@ import { PLAN_STRATEGIES } from '../src/plans/interfaces/plan-strategy.interface
 import { Plan } from '../src/plans/models/plan.entity';
 import { TypeOrmPlanRepository } from '../src/plans/repositories/typeorm-plan.repository';
 import { PlanContextService } from '../src/plans/services/plan-context.service';
-import { DefaultPlanStrategy } from '../src/plans/strategies/default-plan.strategy';
+import { ProPlanStrategy } from '../src/plans/strategies/pro-plan.strategy';
+import { StarterPlanStrategy } from '../src/plans/strategies/starter-plan.strategy';
 
 describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases)', () => {
   let app: NestFastifyApplication;
@@ -180,6 +186,37 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
         subscriptionsStore.find((s) => s.userId === where.userId) ?? null,
     };
 
+    const linkEventRepoMock: ILinkEventRepository = {
+      getTotalsAndUniqueVisitors: async () => ({
+        totalClicks: 1420,
+        uniqueVisitors: 985,
+      }),
+      getDailyTimeline: async () => [
+        { date: '2026-10-25', clicks: 140 },
+        { date: '2026-10-26', clicks: 210 },
+      ],
+      getTopOsBreakdown: async () => [
+        { name: 'iOS', count: 850 },
+        { name: 'Android', count: 470 },
+        { name: 'Windows', count: 75 },
+      ],
+      getTopBrowsersBreakdown: async () => [
+        { name: 'Mobile Safari', count: 780 },
+        { name: 'Chrome Mobile', count: 450 },
+        { name: 'Chrome', count: 120 },
+      ],
+      getTopCountriesBreakdown: async () => [
+        { code: 'HN', count: 1250 },
+        { code: 'US', count: 110 },
+        { code: 'ES', count: 40 },
+      ],
+      getTopReferrersBreakdown: async () => [
+        { source: 'Direct / QR Scan', count: 1150 },
+        { source: 'whatsapp.com', count: 180 },
+        { source: 'instagram.com', count: 65 },
+      ],
+    };
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true }),
@@ -198,11 +235,15 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
         RedirectController,
       ],
       providers: [
-        DefaultPlanStrategy,
+        StarterPlanStrategy,
+        ProPlanStrategy,
         {
           provide: PLAN_STRATEGIES,
-          useFactory: (def: DefaultPlanStrategy) => [def],
-          inject: [DefaultPlanStrategy],
+          useFactory: (
+            starter: StarterPlanStrategy,
+            pro: ProPlanStrategy,
+          ) => [starter, pro],
+          inject: [StarterPlanStrategy, ProPlanStrategy],
         },
         PlanContextService,
         { provide: REDIS_CLIENT, useValue: inMemoryRedis },
@@ -210,6 +251,7 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
         AuthService,
         JwtAuthGuard,
         LinksService,
+        LinkStatsService,
         BillingService,
         { provide: getRepositoryToken(User), useValue: usersRepo },
         { provide: getRepositoryToken(Plan), useValue: plansRepo },
@@ -221,6 +263,7 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
         { provide: USER_REPOSITORY, useClass: TypeOrmUserRepository },
         { provide: PLAN_REPOSITORY, useClass: TypeOrmPlanRepository },
         { provide: LINK_REPOSITORY, useClass: TypeOrmLinkRepository },
+        { provide: LINK_EVENT_REPOSITORY, useValue: linkEventRepoMock },
         {
           provide: SUBSCRIPTION_REPOSITORY,
           useClass: TypeOrmSubscriptionRepository,
@@ -377,9 +420,39 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
       },
     });
     expect(loginA.statusCode).toBe(200);
-    const tokenA: string = loginA.json().accessToken;
-    const payloadA = await jwtService.verifyAsync<JwtPayload>(tokenA);
-    expect(payloadA.plan).toBe('DEFAULT');
+    const starterTokenA: string = loginA.json().accessToken;
+    const payloadA = await jwtService.verifyAsync<JwtPayload>(starterTokenA);
+    expect(payloadA.plan).toBe('STARTER');
+
+    // Sad path on STARTER plan: custom QR colors and customDomain are blocked with 403 Forbidden
+    const starterCustomQrRes = await app.inject({
+      method: 'POST',
+      url: '/links',
+      headers: { authorization: `Bearer ${starterTokenA}` },
+      payload: {
+        targetUrl: 'https://docs.nestjs.com',
+        qrConfig: { foregroundColor: '#E0234E' },
+      },
+    });
+    expect(starterCustomQrRes.statusCode).toBe(403);
+
+    const starterCustomDomainRes = await app.inject({
+      method: 'POST',
+      url: '/links',
+      headers: { authorization: `Bearer ${starterTokenA}` },
+      payload: {
+        targetUrl: 'https://docs.nestjs.com',
+        customDomain: 'qr.miempresa.com',
+      },
+    });
+    expect(starterCustomDomainRes.statusCode).toBe(403);
+
+    // Upgrade User A session to PRO plan to test PRO features (custom QR colors, SVG, logo, etc.)
+    const tokenA = await jwtService.signAsync({
+      sub: payloadA.sub,
+      email: payloadA.email,
+      plan: 'PRO',
+    });
 
     // Register User B to test multi-tenant isolation (IDOR protection)
     const regB = await app.inject({
@@ -485,6 +558,49 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
     });
     expect(listRes.statusCode).toBe(200);
     expect(listRes.json()).toHaveLength(1);
+
+    // Happy & Sad paths on Link Statistics (GET /links/:id/stats)
+    const statsRes = await app.inject({
+      method: 'GET',
+      url: `/links/${linkId}/stats?period=7d`,
+      headers: { authorization: `Bearer ${tokenA}` },
+    });
+    expect(statsRes.statusCode).toBe(200);
+    const statsPayload = statsRes.json();
+    expect(statsPayload).toMatchObject({
+      linkId,
+      period: '7d',
+      summary: {
+        totalClicks: 1420,
+        uniqueVisitors: 985,
+        topCountry: 'HN',
+        topDevice: 'iOS',
+      },
+    });
+    expect(statsPayload.breakdowns.os).toContainEqual({
+      name: 'Others',
+      count: 25,
+      percentage: 1.76,
+    });
+    expect(statsPayload.breakdowns.countries).toContainEqual({
+      code: 'OT',
+      name: 'Others',
+      count: 20,
+      percentage: 1.4,
+    });
+    expect(statsPayload.breakdowns.referrers).toContainEqual({
+      source: 'others',
+      count: 25,
+      percentage: 1.75,
+    });
+
+    // Sad path on stats: IDOR attempt by User B -> 404 Not Found
+    const idorStatsRes = await app.inject({
+      method: 'GET',
+      url: `/links/${linkId}/stats`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+    expect(idorStatsRes.statusCode).toBe(404);
 
     // Happy & Sad paths on QR rendering (SVG default, PNG override, invalid format 400)
     const svgQrRes = await app.inject({

@@ -45,6 +45,15 @@ export class UpdateLinkDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      'Subdominio CNAME personalizado opcional (exclusivo para Plan PRO)',
+    example: 'qr.miempresa.com',
+  })
+  @IsOptional()
+  @IsString()
+  customDomain?: string;
+
+  @ApiPropertyOptional({
     description: 'Parámetros parciales de diseño QR a fusionar en `qrConfig`',
     type: () => QrConfigDto,
   })

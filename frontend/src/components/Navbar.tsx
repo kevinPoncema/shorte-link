@@ -8,7 +8,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
-  const planName = user?.plan || 'DEFAULT';
+  const planName = user?.plan || 'STARTER';
 
   const handleLogout = () => {
     api.clearSession();

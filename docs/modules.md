@@ -100,7 +100,16 @@ Cada método público de los servicios actúa como un **Orquestador declarativo*
 
 ---
 
-## 4. Diagrama UML — Motor de Planes (`Strategy Pattern`)
+## 4. Diagrama UML y Matriz de Planes (`Strategy Pattern`)
+
+| Característica | `StarterPlanStrategy` (`STARTER` / Default) | `ProPlanStrategy` (`PRO` / Premium) |
+| :--- | :--- | :--- |
+| **Nombre Comercial** | Plan Starter (Gratuito / Físico) | Plan Pro / Premium ($9 - $15/mes) |
+| **Límite de enlaces dinámicos** | Hasta **3** enlaces activos | Hasta **50** enlaces activos |
+| **Retención de analíticas** | **7 días** (purga automática semanal) | **365 días** (histórico anual) |
+| **Personalización del QR** | **No** (estándar en blanco y negro `#000000` / `#FFFFFF`) | **Sí** (colores hexadecimales de marca y `logoUrl` SVG/PNG al centro) |
+| **Dominio personalizado** | **No** (utiliza el dominio base del servicio) | **Sí** (soporte para subdominio CNAME propio) |
+| **Enfoque de monetización** | Incluido de por vida con la compra del acrílico o chip NFC | Suscripción recurrente para negocios en crecimiento o múltiples sucursales |
 
 ```mermaid
 classDiagram
@@ -109,24 +118,37 @@ classDiagram
   class PlanStrategy {
     <<interface>>
     +String tierName
+    +String displayName
+    +String monetizationModel
     +assertCanCreateLink(currentCount: number) void
     +canCustomizeQrDesign() boolean
+    +canUseCustomDomain() boolean
     +getMaxActiveLinks() number
     +getAnalyticsRetentionDays() number
   }
 
-  class DefaultPlanStrategy {
-    +String tierName
+  class StarterPlanStrategy {
+    +String tierName = "STARTER"
     +assertCanCreateLink(currentCount: number) void
-    +canCustomizeQrDesign() boolean
-    +getMaxActiveLinks() number
-    +getAnalyticsRetentionDays() number
+    +canCustomizeQrDesign() false
+    +canUseCustomDomain() false
+    +getMaxActiveLinks() 3
+    +getAnalyticsRetentionDays() 7
+  }
+
+  class ProPlanStrategy {
+    +String tierName = "PRO"
+    +assertCanCreateLink(currentCount: number) void
+    +canCustomizeQrDesign() true
+    +canUseCustomDomain() true
+    +getMaxActiveLinks() 50
+    +getAnalyticsRetentionDays() 365
   }
 
   class PlanContextService {
     -Map~String, PlanStrategy~ strategies
-    -DefaultPlanStrategy defaultPlanStrategy
-    +registerStrategy(strategy: PlanStrategy) void
+    -StarterPlanStrategy starterPlanStrategy
+    +registerStrategy(strategy: PlanStrategy, aliases?: string[]) void
     +getStrategy(planKey?: string) PlanStrategy
   }
 
@@ -135,7 +157,8 @@ classDiagram
     +updateLink(user: JwtPayload, linkId: string, dto: UpdateLinkDto) Promise~Link~
   }
 
-  PlanStrategy <|.. DefaultPlanStrategy
+  PlanStrategy <|.. StarterPlanStrategy
+  PlanStrategy <|.. ProPlanStrategy
   PlanContextService o-- PlanStrategy : indexa en Map
   LinksService --> PlanContextService : consulta por req.user.plan
 ```

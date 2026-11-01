@@ -50,6 +50,15 @@ export class CreateLinkDto {
 
   @ApiPropertyOptional({
     description:
+      'Subdominio CNAME personalizado opcional (exclusivo para Plan PRO)',
+    example: 'qr.miempresa.com',
+  })
+  @IsOptional()
+  @IsString()
+  customDomain?: string;
+
+  @ApiPropertyOptional({
+    description:
       'Parámetros opcionales de diseño visual para el código QR dinámico (sujeto a permisos de PlanStrategy)',
     type: () => QrConfigDto,
   })
