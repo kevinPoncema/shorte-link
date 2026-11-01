@@ -6,6 +6,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Query,
   RawBodyRequest,
@@ -32,6 +33,7 @@ import { CreatePhysicalOrderCheckoutDto } from '../dto/create-physical-order-che
 import { CreateSubscriptionCheckoutDto } from '../dto/create-subscription-checkout.dto';
 import { PortalResponseDto } from '../dto/portal-response.dto';
 import { SubscriptionResponseDto } from '../dto/subscription-response.dto';
+import { TogglePhysicalOrdersDto } from '../dto/toggle-physical-orders.dto';
 import { BillingService } from '../services/billing.service';
 
 /**
@@ -43,6 +45,42 @@ import { BillingService } from '../services/billing.service';
 @Controller('billing')
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}
+
+  /**
+   * Obtiene el estado de configuración y Feature Flags activos del módulo de facturación.
+   */
+  @Get('config')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth(JWT_BEARER_AUTH)
+  @ApiOperation({
+    summary: 'Consultar configuración y Feature Flags de facturación',
+    description:
+      'Retorna si el módulo de pedidos físicos está activo (`physicalOrdersEnabled`), precios de hardware y disponibilidad de Stripe.',
+  })
+  @ApiOkResponse({
+    description: 'Estado de configuración de facturación y pedidos físicos',
+  })
+  getBillingConfig() {
+    return this.billingService.getBillingConfig();
+  }
+
+  /**
+   * Activa o desactiva mediante un flag booleano el módulo de pedidos físicos.
+   */
+  @Patch('config/physical-orders')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth(JWT_BEARER_AUTH)
+  @ApiOperation({
+    summary: 'Activar o desactivar módulo de pedidos físicos (Feature Flag booleano)',
+    description:
+      'Permite conmutar el flag booleano `physicalOrdersEnabled` (`true` / `false`) en tiempo de ejecución.',
+  })
+  @ApiOkResponse({
+    description: 'Flag booleano de pedidos físicos actualizado',
+  })
+  togglePhysicalOrders(@Body() dto: TogglePhysicalOrdersDto) {
+    return this.billingService.setPhysicalOrdersEnabled(dto.enabled);
+  }
 
   /**
    * Consulta la suscripción actual vinculada al usuario autenticado.
@@ -129,6 +167,7 @@ export class BillingController {
    * Cancela la suscripción del usuario autenticado y restaura el plan a STARTER.
    */
   @Post('cancel')
+  @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth(JWT_BEARER_AUTH)
   @ApiOperation({
@@ -147,6 +186,7 @@ export class BillingController {
    * Activa el plan PRO directamente (Modo desarrollo / Pruebas).
    */
   @Post('simulate-upgrade')
+  @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth(JWT_BEARER_AUTH)
   @ApiOperation({

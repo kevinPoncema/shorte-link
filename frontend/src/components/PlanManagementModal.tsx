@@ -281,7 +281,7 @@ export const PlanManagementModal: React.FC<PlanManagementModalProps> = ({
                 <ul className="mt-5 space-y-2.5 text-xs text-slate-600">
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span>Hasta <strong>5 enlaces dinámicos</strong></span>
+                    <span>Hasta <strong>3 enlaces dinámicos activos</strong></span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500 shrink-0" />
@@ -293,7 +293,7 @@ export const PlanManagementModal: React.FC<PlanManagementModalProps> = ({
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span>Métricas resumidas de clics</span>
+                    <span>Métricas de clics con retención de 7 días</span>
                   </li>
                 </ul>
               </div>
@@ -343,7 +343,7 @@ export const PlanManagementModal: React.FC<PlanManagementModalProps> = ({
 
                 <h3 className="text-base font-bold text-slate-900">Plan PRO</h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Capacidad ilimitada, analíticas completas y personalización avanzada.
+                  Capacidad ampliada, analíticas de 365 días y personalización avanzada.
                 </p>
 
                 <div className="mt-4 flex items-baseline gap-1">
@@ -354,7 +354,7 @@ export const PlanManagementModal: React.FC<PlanManagementModalProps> = ({
                 <ul className="mt-5 space-y-2.5 text-xs text-slate-600">
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-indigo-600 shrink-0 font-bold" />
-                    <span><strong>Enlaces y códigos QR ilimitados</strong></span>
+                    <span>Hasta <strong>50 enlaces dinámicos activos</strong></span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-indigo-600 shrink-0" />
@@ -362,7 +362,7 @@ export const PlanManagementModal: React.FC<PlanManagementModalProps> = ({
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-indigo-600 shrink-0" />
-                    <span>Analíticas por dispositivo, país, navegador y timeline</span>
+                    <span>Analíticas por dispositivo, país, navegador y timeline (365 días)</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-indigo-600 shrink-0" />

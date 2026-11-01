@@ -6,17 +6,29 @@ import { QrPreviewModal } from '../components/QrPreviewModal';
 import { EditLinkModal } from '../components/EditLinkModal';
 import { LinkStatsModal } from '../components/LinkStatsModal';
 import { PhysicalOrderModal } from '../components/PhysicalOrderModal';
-import { RefreshCw, Link as LinkIcon, AlertCircle, Sparkles } from 'lucide-react';
+import {
+  RefreshCw,
+  Link as LinkIcon,
+  AlertCircle,
+  Sparkles,
+  CreditCard,
+} from 'lucide-react';
 
 interface DashboardPageProps {
+  currentUser?: User | null;
   onOpenPlans?: () => void;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenPlans }) => {
+export const DashboardPage: React.FC<DashboardPageProps> = ({
+  currentUser: propUser,
+  onOpenPlans,
+}) => {
   const [links, setLinks] = useState<LinkItem[]>([]);
-  const [currentUser] = useState<User | null>(() => api.getCurrentUser());
+  const currentUser = propUser !== undefined ? propUser : api.getCurrentUser();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [physicalOrdersEnabled, setPhysicalOrdersEnabled] = useState<boolean>(true);
+  const [togglingPhysicalFlag, setTogglingPhysicalFlag] = useState<boolean>(false);
   const [selectedLinkForQr, setSelectedLinkForQr] = useState<LinkItem | null>(null);
   const [selectedLinkForEdit, setSelectedLinkForEdit] = useState<LinkItem | null>(null);
   const [selectedLinkForStats, setSelectedLinkForStats] = useState<LinkItem | null>(null);
@@ -35,8 +47,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenPlans }) => 
     }
   };
 
+  const fetchBillingConfig = async () => {
+    try {
+      const cfg = await api.getBillingConfig();
+      setPhysicalOrdersEnabled(cfg.physicalOrdersEnabled);
+    } catch {
+      // Mantiene el valor por defecto true si no responde
+    }
+  };
+
+  const handleTogglePhysicalOrders = async () => {
+    setTogglingPhysicalFlag(true);
+    try {
+      const next = !physicalOrdersEnabled;
+      const res = await api.togglePhysicalOrders(next);
+      setPhysicalOrdersEnabled(res.physicalOrdersEnabled);
+    } catch (err: unknown) {
+      setError(
+        (err as { message?: string })?.message ||
+          'No se pudo actualizar el flag booleano de pedidos físicos',
+      );
+    } finally {
+      setTogglingPhysicalFlag(false);
+    }
+  };
+
   useEffect(() => {
-    fetchLinks();
+    void fetchLinks();
+    void fetchBillingConfig();
   }, []);
 
   const handleLinkCreated = (newLink: LinkItem) => {
@@ -64,10 +102,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenPlans }) => 
             </div>
             <div>
               <p className="text-xs font-bold text-slate-800">
-                Plan Starter Activo (Límite: 5 enlaces)
+                Plan Starter Activo (Límite: 3 enlaces activos)
               </p>
               <p className="text-[11px] text-slate-500">
-                Obtén enlaces ilimitados, personalización de colores de QR y analíticas avanzadas con el Plan PRO.
+                Obtén hasta 50 enlaces activos, personalización de colores de QR y 365 días de analíticas con el Plan PRO.
               </p>
             </div>
           </div>
@@ -87,7 +125,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenPlans }) => 
 
       {/* Links List Section */}
       <div className="mt-8">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h2 className="text-base font-semibold text-slate-900">
               Tus Enlaces & Códigos QR
@@ -97,15 +135,36 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenPlans }) => 
             </span>
           </div>
 
-          <button
-            onClick={fetchLinks}
-            disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 focus:outline-none"
-            title="Recargar enlaces"
-          >
-            <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refrescar</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Toggle Feature Flag Booleano: Pedidos Físicos NFC */}
+            <button
+              type="button"
+              onClick={handleTogglePhysicalOrders}
+              disabled={togglingPhysicalFlag}
+              data-testid="toggle-physical-orders-btn"
+              title="Conmutar flag booleano del módulo de pedidos físicos (ENABLE_PHYSICAL_ORDERS)"
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                physicalOrdersEnabled
+                  ? 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'
+                  : 'border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200'
+              }`}
+            >
+              <CreditCard className="h-3.5 w-3.5" />
+              <span>
+                Pedidos Físicos NFC: {physicalOrdersEnabled ? 'Activo' : 'Inactivo'}
+              </span>
+            </button>
+
+            <button
+              onClick={fetchLinks}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 focus:outline-none"
+              title="Recargar enlaces"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+              <span>Refrescar</span>
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -142,7 +201,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenPlans }) => 
                 onDelete={handleLinkDeleted}
                 onOpenModal={(item) => setSelectedLinkForQr(item)}
                 onOpenStats={(item) => setSelectedLinkForStats(item)}
-                onOrderPhysical={(item) => setSelectedLinkForPhysical(item)}
+                onOrderPhysical={
+                  physicalOrdersEnabled
+                    ? (item) => setSelectedLinkForPhysical(item)
+                    : undefined
+                }
               />
             ))}
           </div>

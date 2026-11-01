@@ -18,29 +18,45 @@ export function App() {
   const isAuthenticated = Boolean(token && user);
 
   useEffect(() => {
-    // Detectar retorno desde Stripe Checkout (?payment=success o ?payment=cancelled)
+    // Detectar retorno desde Stripe Checkout (?payment=success|cancelled o ?order=success|cancelled)
     const params = new URLSearchParams(window.location.search);
     const paymentStatus = params.get('payment');
+    const orderStatus = params.get('order');
 
     if (paymentStatus === 'success') {
       setPaymentNotice({
         type: 'success',
         message: '¡Pago completado con éxito! Tu plan ha sido actualizado a PRO.',
       });
-      // Limpiar URL sin recargar
       window.history.replaceState({}, '', window.location.pathname);
-      // Refrescar perfil del usuario desde backend
-      if (token) {
-        api.getMe().then((updated) => {
-          if (updated) setUser(updated);
-        }).catch(() => {});
-      }
     } else if (paymentStatus === 'cancelled') {
       setPaymentNotice({
         type: 'cancelled',
         message: 'Sesión de pago cancelada. Puedes retomar el cambio de plan cuando desees.',
       });
       window.history.replaceState({}, '', window.location.pathname);
+    } else if (orderStatus === 'success') {
+      setPaymentNotice({
+        type: 'success',
+        message: '¡Orden de hardware NFC/QR confirmada con éxito! Tu pedido ha pasado a cola de manufactura.',
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (orderStatus === 'cancelled') {
+      setPaymentNotice({
+        type: 'cancelled',
+        message: 'Solicitud de pedido físico cancelada.',
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    // Sincronizar perfil y rotar JWT con el plan vigente en PostgreSQL
+    if (token) {
+      api
+        .getMe()
+        .then((updated) => {
+          if (updated) setUser(updated);
+        })
+        .catch(() => {});
     }
   }, [token]);
 
@@ -90,7 +106,10 @@ export function App() {
             onLogout={handleLogout}
             onOpenPlans={() => setIsPlanModalOpen(true)}
           />
-          <DashboardPage onOpenPlans={() => setIsPlanModalOpen(true)} />
+          <DashboardPage
+            currentUser={user}
+            onOpenPlans={() => setIsPlanModalOpen(true)}
+          />
           <PlanManagementModal
             isOpen={isPlanModalOpen}
             onClose={() => setIsPlanModalOpen(false)}

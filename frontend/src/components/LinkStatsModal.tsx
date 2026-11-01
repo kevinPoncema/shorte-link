@@ -42,21 +42,18 @@ export const LinkStatsModal: React.FC<LinkStatsModalProps> = ({
   currentUser,
   onClose,
 }) => {
-  if (!link) return null;
-
   const [period, setPeriod] = useState<string>('7d');
   const [stats, setStats] = useState<LinkStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const isStarter = (currentUser?.plan || 'STARTER').toUpperCase() === 'STARTER';
-  const shortUrl = `${API_BASE_URL}/${link.shortCode}`;
 
-  const fetchStats = async (selectedPeriod: string) => {
+  const fetchStats = async (targetLinkId: string, selectedPeriod: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getLinkStats(link.id, selectedPeriod);
+      const data = await api.getLinkStats(targetLinkId, selectedPeriod);
       setStats(data);
     } catch (err: unknown) {
       const apiErr = err as ApiError;
@@ -67,8 +64,14 @@ export const LinkStatsModal: React.FC<LinkStatsModalProps> = ({
   };
 
   useEffect(() => {
-    fetchStats(period);
-  }, [link.id, period]);
+    if (link) {
+      void fetchStats(link.id, period);
+    }
+  }, [link?.id, period]);
+
+  if (!link) return null;
+
+  const shortUrl = `${API_BASE_URL}/${link.shortCode}`;
 
   // Cálculo de escala para el gráfico de barras Timeline
   const timelinePoints = stats?.timeline || [];
@@ -108,7 +111,7 @@ export const LinkStatsModal: React.FC<LinkStatsModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => fetchStats(period)}
+              onClick={() => fetchStats(link.id, period)}
               disabled={loading}
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 p-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition"
               title="Actualizar métricas"

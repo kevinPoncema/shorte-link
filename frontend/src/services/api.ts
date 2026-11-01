@@ -115,6 +115,14 @@ export interface PlanChangeResponse {
   success: boolean;
   message: string;
   plan: string;
+  accessToken?: string;
+}
+
+export interface BillingConfig {
+  physicalOrdersEnabled: boolean;
+  proPriceIdConfigured: boolean;
+  stripeMockMode: boolean;
+  hardwarePrices: Record<string, number>;
 }
 
 export interface ShippingAddress {
@@ -322,14 +330,35 @@ class ApiService {
 
   // --- User Profile ---
   async getMe(): Promise<User> {
-    const user = await this.request<User>('/auth/me');
-    if (user) {
+    const data = await this.request<User & { accessToken?: string }>('/auth/me');
+    if (data) {
+      if (data.accessToken) {
+        localStorage.setItem('token', data.accessToken);
+      }
+      const { accessToken: _token, ...user } = data;
       localStorage.setItem('user', JSON.stringify(user));
+      return user as User;
     }
-    return user;
+    return data;
   }
 
   // --- Billing endpoints ---
+  async getBillingConfig(): Promise<BillingConfig> {
+    return this.request<BillingConfig>('/billing/config');
+  }
+
+  async togglePhysicalOrders(
+    enabled: boolean,
+  ): Promise<{ physicalOrdersEnabled: boolean }> {
+    return this.request<{ physicalOrdersEnabled: boolean }>(
+      '/billing/config/physical-orders',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      },
+    );
+  }
+
   async getSubscription(): Promise<Subscription | null> {
     const data = await this.request<SubscriptionResponse>('/billing/subscription');
     return data.subscription;
@@ -355,6 +384,9 @@ class ApiService {
     const res = await this.request<PlanChangeResponse>('/billing/cancel', {
       method: 'POST',
     });
+    if (res.accessToken) {
+      localStorage.setItem('token', res.accessToken);
+    }
     const current = this.getCurrentUser();
     if (current) {
       current.plan = res.plan || 'STARTER';
@@ -367,6 +399,9 @@ class ApiService {
     const res = await this.request<PlanChangeResponse>('/billing/simulate-upgrade', {
       method: 'POST',
     });
+    if (res.accessToken) {
+      localStorage.setItem('token', res.accessToken);
+    }
     const current = this.getCurrentUser();
     if (current) {
       current.plan = res.plan || 'PRO';

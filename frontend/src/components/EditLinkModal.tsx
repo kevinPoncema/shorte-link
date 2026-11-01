@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LinkItem, API_BASE_URL, api, ApiError } from '../services/api';
+import React, { useEffect, useState } from 'react';
+import { LinkItem, API_BASE_URL, api, ApiError, QrConfig } from '../services/api';
 import { X, Save, AlertCircle, Sparkles, Link2, Tag, RefreshCw } from 'lucide-react';
 
 interface EditLinkModalProps {
@@ -13,19 +13,30 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
   onClose,
   onLinkUpdated,
 }) => {
-  if (!link) return null;
-
-  const [name, setName] = useState(link.name || '');
-  const [targetUrl, setTargetUrl] = useState(link.targetUrl);
-  const [isActive, setIsActive] = useState(link.isActive);
+  const [name, setName] = useState(link?.name || '');
+  const [targetUrl, setTargetUrl] = useState(link?.targetUrl || '');
+  const [isActive, setIsActive] = useState(link?.isActive ?? true);
   const [qrColor, setQrColor] = useState(
-    link.qrConfig?.foregroundColor || '#000000'
+    link?.qrConfig?.foregroundColor || '#000000'
   );
   const [qrBgColor, setQrBgColor] = useState(
-    link.qrConfig?.backgroundColor || '#FFFFFF'
+    link?.qrConfig?.backgroundColor || '#FFFFFF'
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (link) {
+      setName(link.name || '');
+      setTargetUrl(link.targetUrl);
+      setIsActive(link.isActive);
+      setQrColor(link.qrConfig?.foregroundColor || '#000000');
+      setQrBgColor(link.qrConfig?.backgroundColor || '#FFFFFF');
+      setError(null);
+    }
+  }, [link]);
+
+  if (!link) return null;
 
   const shortUrl = `${API_BASE_URL}/${link.shortCode}`;
 
@@ -42,17 +53,32 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
         cleanTarget = `https://${cleanTarget}`;
       }
 
-      // Al actualizar targetUrl o parámetros, el backend ejecuta invalidación reactiva: DEL r:{shortCode}
-      const updated = await api.updateLink(link.id, {
+      const prevFg = (link.qrConfig?.foregroundColor || '#000000').toUpperCase();
+      const prevBg = (link.qrConfig?.backgroundColor || '#FFFFFF').toUpperCase();
+      const colorsModified =
+        qrColor.toUpperCase() !== prevFg || qrBgColor.toUpperCase() !== prevBg;
+
+      const updatePayload: {
+        name?: string;
+        targetUrl?: string;
+        isActive?: boolean;
+        qrConfig?: QrConfig;
+      } = {
         name: name.trim(),
         targetUrl: cleanTarget,
         isActive,
-        qrConfig: {
+      };
+
+      if (colorsModified) {
+        updatePayload.qrConfig = {
           ...link.qrConfig,
           foregroundColor: qrColor,
           backgroundColor: qrBgColor,
-        },
-      });
+        };
+      }
+
+      // Al actualizar targetUrl o parámetros, el backend ejecuta invalidación reactiva: DEL r:{shortCode}
+      const updated = await api.updateLink(link.id, updatePayload);
 
       onLinkUpdated(updated);
       onClose();
