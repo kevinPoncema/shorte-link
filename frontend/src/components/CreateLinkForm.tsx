@@ -23,12 +23,17 @@ export const CreateLinkForm: React.FC<CreateLinkFormProps> = ({ onLinkCreated })
     setErrorMessage(null);
 
     try {
+      let cleanTarget = targetUrl.trim();
+      if (!/^https?:\/\//i.test(cleanTarget)) {
+        cleanTarget = `https://${cleanTarget}`;
+      }
+
       const payload: {
         targetUrl: string;
         name?: string;
         qrConfig?: { foregroundColor?: string; backgroundColor?: string };
       } = {
-        targetUrl: targetUrl.trim(),
+        targetUrl: cleanTarget,
       };
 
       if (name.trim()) {

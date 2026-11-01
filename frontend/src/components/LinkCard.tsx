@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { LinkItem, API_BASE_URL, api } from '../services/api';
+import { LinkItem, API_BASE_URL, api, ApiError } from '../services/api';
 import {
   Copy,
   Check,
@@ -48,7 +48,9 @@ export const LinkCard: React.FC<LinkCardProps> = ({
       await api.deleteLink(link.id);
       onDelete(link.id);
     } catch (err: unknown) {
-      alert((err as { message?: string })?.message || 'Error al eliminar');
+      console.error('Error al eliminar enlace:', err);
+      const apiErr = err as ApiError;
+      alert(apiErr.message || 'Error al eliminar el enlace');
       setDeleting(false);
     }
   };

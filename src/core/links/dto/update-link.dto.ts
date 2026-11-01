@@ -1,6 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsOptional, IsUrl, ValidateNested } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  IsUrl,
+  ValidateNested,
+} from 'class-validator';
 import { QrConfigDto } from './qr-config.dto';
 
 /**
@@ -14,6 +20,7 @@ export class UpdateLinkDto {
     maxLength: 150,
   })
   @IsOptional()
+  @IsString()
   name?: string;
 
   @ApiPropertyOptional({

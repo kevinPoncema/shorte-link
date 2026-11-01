@@ -71,18 +71,35 @@ class ApiService {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const token = this.getToken();
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
+
+    if (options.body && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    const url = `${API_BASE_URL}${endpoint}`;
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers,
+      });
+    } catch (networkError: unknown) {
+      const msg = (networkError as Error)?.message || 'NetworkError';
+      console.error(`Error de red al conectar con ${url}:`, networkError);
+      const error: ApiError = {
+        statusCode: 0,
+        message: `No se pudo conectar con el servidor (${url}). Verifica que el backend esté en ejecución y los métodos CORS estén habilitados. Detalle: ${msg}`,
+        error: msg,
+      };
+      throw error;
+    }
 
     if (response.status === 204) {
       return {} as T;

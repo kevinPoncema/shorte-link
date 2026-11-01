@@ -216,7 +216,18 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter({ trustProxy: true }),
     );
-    app.enableCors();
+    app.enableCors({
+      origin: true,
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'Accept',
+        'Origin',
+        'X-Requested-With',
+      ],
+      credentials: true,
+    });
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -582,5 +593,50 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
       url: `/${shortCode}`,
     });
     expect(deletedRedirectRes.statusCode).toBe(404);
+  });
+
+  it('correctly handles CORS preflight OPTIONS requests for PATCH and DELETE methods', async () => {
+    const testId = randomUUID();
+
+    // Preflight for PATCH /links/:id
+    const patchPreflight = await app.inject({
+      method: 'OPTIONS',
+      url: `/links/${testId}`,
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': 'PATCH',
+        'access-control-request-headers': 'authorization, content-type',
+      },
+    });
+
+    expect(patchPreflight.statusCode).toBe(204);
+    expect(patchPreflight.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+    const patchAllowedMethods = patchPreflight.headers[
+      'access-control-allow-methods'
+    ] as string;
+    expect(patchAllowedMethods).toContain('PATCH');
+    expect(patchAllowedMethods).toContain('DELETE');
+
+    // Preflight for DELETE /links/:id
+    const deletePreflight = await app.inject({
+      method: 'OPTIONS',
+      url: `/links/${testId}`,
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': 'DELETE',
+        'access-control-request-headers': 'authorization',
+      },
+    });
+
+    expect(deletePreflight.statusCode).toBe(204);
+    expect(deletePreflight.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+    const deleteAllowedMethods = deletePreflight.headers[
+      'access-control-allow-methods'
+    ] as string;
+    expect(deleteAllowedMethods).toContain('DELETE');
   });
 });

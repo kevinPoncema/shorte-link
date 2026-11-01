@@ -37,10 +37,15 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
     setError(null);
 
     try {
+      let cleanTarget = targetUrl.trim();
+      if (!/^https?:\/\//i.test(cleanTarget)) {
+        cleanTarget = `https://${cleanTarget}`;
+      }
+
       // Al actualizar targetUrl o parámetros, el backend ejecuta invalidación reactiva: DEL r:{shortCode}
       const updated = await api.updateLink(link.id, {
-        name: name.trim() || undefined,
-        targetUrl: targetUrl.trim(),
+        name: name.trim(),
+        targetUrl: cleanTarget,
         isActive,
         qrConfig: {
           ...link.qrConfig,
@@ -52,6 +57,7 @@ export const EditLinkModal: React.FC<EditLinkModalProps> = ({
       onLinkUpdated(updated);
       onClose();
     } catch (err: unknown) {
+      console.error('Error al actualizar enlace:', err);
       const apiErr = err as ApiError;
       setError(apiErr.message || 'Error al actualizar el enlace');
     } finally {
