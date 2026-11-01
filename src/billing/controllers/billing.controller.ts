@@ -29,6 +29,7 @@ import { JwtAuthGuard } from '../../core/auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../../core/auth/interfaces/jwt-payload.interface';
 import { JWT_BEARER_AUTH } from '../../openapi.config';
 import { CheckoutResponseDto } from '../dto/checkout-response.dto';
+import { CompleteSandboxCheckoutDto } from '../dto/complete-sandbox-checkout.dto';
 import { CreatePhysicalOrderCheckoutDto } from '../dto/create-physical-order-checkout.dto';
 import { CreateSubscriptionCheckoutDto } from '../dto/create-subscription-checkout.dto';
 import { PortalResponseDto } from '../dto/portal-response.dto';
@@ -199,6 +200,28 @@ export class BillingController {
   })
   async simulateUpgrade(@CurrentUser() user: JwtPayload) {
     return this.billingService.upgradeToProSimulated(user.sub);
+  }
+
+  /**
+   * Confirma el pago de una sesión interactiva en Stripe Checkout Sandbox (Suscripción o Pedido Físico).
+   */
+  @Post('checkout/sandbox/complete')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth(JWT_BEARER_AUTH)
+  @ApiOperation({
+    summary: 'Confirmar pago en UI de Stripe Checkout Sandbox',
+    description:
+      'Procesa la confirmación de tarjeta desde la UI interactiva de Stripe Checkout Sandbox para suscripción PRO o pedidos físicos NFC.',
+  })
+  @ApiOkResponse({
+    description: 'Pago confirmado y estado actualizado',
+  })
+  async completeSandboxCheckout(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CompleteSandboxCheckoutDto,
+  ) {
+    return this.billingService.completeSandboxCheckout(user, dto);
   }
 
   /**

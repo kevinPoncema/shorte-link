@@ -3,6 +3,7 @@ import { api, User } from './services/api';
 import { Navbar } from './components/Navbar';
 import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { StripeSandboxPage } from './pages/StripeSandboxPage';
 import { PlanManagementModal } from './components/PlanManagementModal';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -16,6 +17,9 @@ export function App() {
 
   const token = localStorage.getItem('token');
   const isAuthenticated = Boolean(token && user);
+  const sandboxMode = new URLSearchParams(window.location.search).get(
+    'stripe_sandbox',
+  );
 
   useEffect(() => {
     // Detectar retorno desde Stripe Checkout (?payment=success|cancelled o ?order=success|cancelled)
@@ -99,7 +103,10 @@ export function App() {
         </div>
       )}
 
-      {isAuthenticated ? (
+      {isAuthenticated &&
+      (sandboxMode === 'checkout' || sandboxMode === 'portal') ? (
+        <StripeSandboxPage currentUser={user} />
+      ) : isAuthenticated ? (
         <>
           <Navbar
             user={user}

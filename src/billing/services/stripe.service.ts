@@ -67,6 +67,9 @@ export class StripeService {
 
   /**
    * Crea una sesión de Stripe Checkout en modo recurrente (`subscription`).
+   * Si `priceId` es un identificador placeholder de desarrollo o no existe aún en la cuenta
+   * de Stripe del usuario, utiliza `price_data` dinámico ($19.00 USD / mes) para abrir
+   * `checkout.stripe.com` sin requerir creación manual previa en Stripe Dashboard.
    */
   async createSubscriptionCheckoutSession(params: {
     customerId: string;
@@ -75,15 +78,30 @@ export class StripeService {
     cancelUrl: string;
     userId: string;
   }): Promise<Stripe.Checkout.Session> {
-    return this.stripe.checkout.sessions.create({
-      customer: params.customerId,
-      mode: 'subscription',
-      line_items: [
-        {
-          price: params.priceId,
-          quantity: 1,
+    const normalizedPrice = params.priceId.trim();
+    const isMockPriceId =
+      normalizedPrice.toLowerCase().includes('mock') ||
+      normalizedPrice.toLowerCase().includes('placeholder') ||
+      normalizedPrice.toLowerCase().includes('simulated');
+
+    const buildInlinePriceLineItem =
+      (): Stripe.Checkout.SessionCreateParams.LineItem => ({
+        price_data: {
+          currency: 'usd',
+          unit_amount: 1900,
+          recurring: { interval: 'month' },
+          product_data: {
+            name: 'Plan PRO — QR Maker SaaS',
+            description:
+              'Hasta 50 enlaces dinámicos activos, QR personalizado y analíticas de 365 días.',
+          },
         },
-      ],
+        quantity: 1,
+      });
+
+    const baseSessionParams = {
+      customer: params.customerId,
+      mode: 'subscription' as const,
       success_url: params.successUrl,
       cancel_url: params.cancelUrl,
       metadata: {
@@ -94,7 +112,38 @@ export class StripeService {
           userId: params.userId,
         },
       },
-    });
+    };
+
+    if (isMockPriceId) {
+      return this.stripe.checkout.sessions.create({
+        ...baseSessionParams,
+        line_items: [buildInlinePriceLineItem()],
+      });
+    }
+
+    try {
+      return await this.stripe.checkout.sessions.create({
+        ...baseSessionParams,
+        line_items: [
+          {
+            price: normalizedPrice,
+            quantity: 1,
+          },
+        ],
+      });
+    } catch (err: any) {
+      const msg = String(err?.message || '').toLowerCase();
+      if (err?.code === 'resource_missing' || msg.includes('no such price')) {
+        this.logger.warn(
+          `El priceId '${normalizedPrice}' no existe en Stripe; creando sesión Checkout con price_data dinámico ($19/mes).`,
+        );
+        return this.stripe.checkout.sessions.create({
+          ...baseSessionParams,
+          line_items: [buildInlinePriceLineItem()],
+        });
+      }
+      throw err;
+    }
   }
 
   /**

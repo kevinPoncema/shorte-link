@@ -14,6 +14,7 @@ import { AuthService } from '../../core/auth/services/auth.service';
 import { UsersService } from '../../core/auth/services/users.service';
 import { LinksService } from '../../core/links/services/links.service';
 import { CheckoutResponseDto } from '../dto/checkout-response.dto';
+import { CompleteSandboxCheckoutDto } from '../dto/complete-sandbox-checkout.dto';
 import { CreatePhysicalOrderCheckoutDto } from '../dto/create-physical-order-checkout.dto';
 import { CreateSubscriptionCheckoutDto } from '../dto/create-subscription-checkout.dto';
 import { PortalResponseDto } from '../dto/portal-response.dto';
@@ -161,11 +162,29 @@ export class BillingService {
       }
 
       if (this.shouldFallbackToSimulatedStripe(err)) {
+        const sandboxSessionId = `cs_sandbox_sub_${Date.now()}`;
+        await this.subscriptionRepository.upsert({
+          userId: user.sub,
+          providerName: 'STRIPE',
+          providerCustomerId: `cus_sim_${user.sub.slice(0, 8)}`,
+          providerPriceId: priceId,
+          status: 'incomplete',
+        });
         this.logger.warn(
-          `Credenciales Stripe de desarrollo detectadas (${err.message}). Ejecutando simulación local de Checkout PRO para usuario ${user.sub}.`,
+          `Credenciales Stripe de desarrollo detectadas (${err.message}). Redirigiendo a UI interactiva de Stripe Checkout Sandbox (${sandboxSessionId}) para usuario ${user.sub}.`,
         );
-        await this.upgradeToProSimulated(user.sub);
-        return { checkoutUrl: dto.successUrl };
+        return {
+          checkoutUrl: this.buildSandboxCheckoutUrl(dto.successUrl, {
+            mode: 'subscription',
+            sessionId: sandboxSessionId,
+            amount: '19.00',
+            title: 'Plan PRO — Suscripción Mensual',
+            subtitle:
+              'Hasta 50 enlaces dinámicos activos, colores QR de marca y analíticas de 365 días',
+            successUrl: dto.successUrl,
+            cancelUrl: dto.cancelUrl,
+          }),
+        };
       }
 
       this.logger.error(`Error al crear sesión de suscripción en Stripe: ${err.message}`);
@@ -199,7 +218,7 @@ export class BillingService {
     const effectiveReturnUrl = returnUrl || defaultReturnUrl;
 
     if (subscription.providerCustomerId.startsWith('cus_sim_')) {
-      return { url: effectiveReturnUrl };
+      return { url: this.buildSandboxPortalUrl(effectiveReturnUrl) };
     }
 
     try {
@@ -212,9 +231,9 @@ export class BillingService {
     } catch (err: any) {
       if (this.shouldFallbackToSimulatedStripe(err)) {
         this.logger.warn(
-          `Credenciales Stripe de desarrollo detectadas en Customer Portal. Redirigiendo a ${effectiveReturnUrl}.`,
+          `Credenciales Stripe de desarrollo detectadas en Customer Portal. Redirigiendo a UI de Stripe Billing Portal Sandbox.`,
         );
-        return { url: effectiveReturnUrl };
+        return { url: this.buildSandboxPortalUrl(effectiveReturnUrl) };
       }
 
       this.logger.error(`Error al crear sesión en Stripe Customer Portal: ${err.message}`);
@@ -421,16 +440,37 @@ export class BillingService {
       }
 
       if (this.shouldFallbackToSimulatedStripe(err)) {
-        const simId = `cs_sim_order_${savedOrder.id}`;
+        const simId = `cs_sandbox_order_${savedOrder.id}`;
         await this.orderRepository.update(savedOrder.id, {
-          paymentStatus: 'paid',
-          fulfillmentStatus: 'in_production',
           providerPaymentIntentId: simId,
         });
+        const totalQty = dto.items.reduce((acc, it) => acc + it.quantity, 0);
+        const firstType = dto.items[0]?.itemType || 'acrylic_stand';
+        const primaryTitle =
+          firstType === 'acrylic_stand'
+            ? 'Placa Acrílica con QR + NFC'
+            : firstType === 'plastic_card' || firstType === 'nfc_card'
+              ? 'Tarjeta Plástica PVC con QR + NFC'
+              : firstType === 'nfc_sticker'
+                ? 'Sticker Resinado Anti-Metal NFC'
+                : `Hardware QR + NFC (${firstType})`;
+
         this.logger.warn(
-          `Credenciales Stripe de desarrollo detectadas. Orden física ${savedOrder.id} marcada como 'paid' e 'in_production'.`,
+          `Credenciales Stripe de desarrollo detectadas. Redirigiendo orden física ${savedOrder.id} a UI interactiva de Stripe Checkout Sandbox.`,
         );
-        return { checkoutUrl: dto.successUrl };
+        return {
+          checkoutUrl: this.buildSandboxCheckoutUrl(dto.successUrl, {
+            mode: 'payment',
+            orderId: savedOrder.id,
+            sessionId: simId,
+            amount: totalAmount.toFixed(2),
+            title: primaryTitle,
+            subtitle: `${totalQty} unidad(es) • Entrega en ${dto.shippingAddress.city} (${dto.shippingAddress.fullName})`,
+            qty: String(totalQty),
+            successUrl: dto.successUrl,
+            cancelUrl: dto.cancelUrl,
+          }),
+        };
       }
 
       this.logger.error(`Error al crear sesión de pago físico en Stripe: ${err.message}`);
@@ -438,6 +478,56 @@ export class BillingService {
         `No se pudo iniciar la sesión de pago en Stripe: ${err.message}`,
       );
     }
+  }
+
+  /**
+   * **Confirma el pago desde la UI interactiva de Stripe Checkout Sandbox (`POST /billing/checkout/sandbox/complete`):**
+   * - En modo `'subscription'`: activa la suscripción PRO y emite un JWT renovado.
+   * - En modo `'payment'`: marca la orden física pendiente del usuario como `'paid'` e `'in_production'`.
+   */
+  async completeSandboxCheckout(
+    user: JwtPayload,
+    dto: CompleteSandboxCheckoutDto,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    plan?: string;
+    orderId?: string;
+    accessToken?: string;
+  }> {
+    if (dto.mode === 'subscription') {
+      return this.upgradeToProSimulated(user.sub);
+    }
+
+    if (!dto.orderId) {
+      throw new BadRequestException(
+        'El parámetro orderId es obligatorio para confirmar un pago físico.',
+      );
+    }
+
+    const order = await this.orderRepository.findById(dto.orderId.trim());
+    if (!order || order.userId !== user.sub) {
+      throw new NotFoundException(
+        'La orden física especificada no existe o no pertenece a tu cuenta.',
+      );
+    }
+
+    await this.orderRepository.update(order.id, {
+      paymentStatus: 'paid',
+      fulfillmentStatus: 'in_production',
+      providerPaymentIntentId:
+        dto.sessionId?.trim() || `pi_sandbox_${order.id.slice(0, 8)}`,
+    });
+
+    this.logger.log(
+      `Pago confirmado en Stripe Checkout Sandbox para orden física ${order.id}. Estado: paid / in_production.`,
+    );
+
+    return {
+      success: true,
+      message: 'Pago confirmado exitosamente. Tu pedido ha pasado a producción.',
+      orderId: order.id,
+    };
   }
 
   /**
@@ -926,5 +1016,43 @@ export class BillingService {
       email: user.email,
       plan: planTier,
     });
+  }
+
+  /**
+   * Construye la URL de la pasarela interactiva Stripe Checkout Sandbox alojada en el frontend.
+   */
+  private buildSandboxCheckoutUrl(
+    targetReturnUrl: string,
+    params: Record<string, string>,
+  ): string {
+    const origin = this.extractFrontendOrigin(targetReturnUrl);
+    const search = new URLSearchParams({
+      stripe_sandbox: 'checkout',
+      ...params,
+    });
+    return `${origin}/?${search.toString()}`;
+  }
+
+  /**
+   * Construye la URL del Stripe Customer Portal Sandbox alojado en el frontend.
+   */
+  private buildSandboxPortalUrl(returnUrl: string): string {
+    const origin = this.extractFrontendOrigin(returnUrl);
+    const search = new URLSearchParams({
+      stripe_sandbox: 'portal',
+      returnUrl,
+    });
+    return `${origin}/?${search.toString()}`;
+  }
+
+  /**
+   * Extrae el origen (`protocol + host`) desde la URL de retorno del cliente.
+   */
+  private extractFrontendOrigin(urlCandidate: string): string {
+    try {
+      return new URL(urlCandidate).origin;
+    } catch {
+      return 'http://localhost:5173';
+    }
   }
 }

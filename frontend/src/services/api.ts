@@ -410,6 +410,40 @@ class ApiService {
     return res;
   }
 
+  async completeSandboxCheckout(payload: {
+    mode: 'subscription' | 'payment';
+    orderId?: string;
+    sessionId?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    plan?: string;
+    orderId?: string;
+    accessToken?: string;
+  }> {
+    const res = await this.request<{
+      success: boolean;
+      message: string;
+      plan?: string;
+      orderId?: string;
+      accessToken?: string;
+    }>('/billing/checkout/sandbox/complete', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res.accessToken) {
+      localStorage.setItem('token', res.accessToken);
+    }
+    if (res.plan) {
+      const current = this.getCurrentUser();
+      if (current) {
+        current.plan = res.plan;
+        localStorage.setItem('user', JSON.stringify(current));
+      }
+    }
+    return res;
+  }
+
   // --- Physical Orders endpoints ---
   async createPhysicalOrderCheckout(
     payload: CreatePhysicalOrderPayload,

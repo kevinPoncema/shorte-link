@@ -692,7 +692,7 @@ describe('BillingService, Repositories, Stripe Integration & BillingController',
       );
     });
 
-    it('falls back gracefully to local simulation when STRIPE_SECRET_KEY is a dev placeholder and Stripe rejects the key', async () => {
+    it('redirects to interactive Stripe Checkout Sandbox UI when STRIPE_SECRET_KEY is a dev placeholder and confirms payment via completeSandboxCheckout', async () => {
       const placeholderConfig = new ConfigService({
         STRIPE_SECRET_KEY: 'sk_test_51MockStripeSecretKeyForDevelopment99887766',
         STRIPE_PRO_PRICE_ID: 'price_1QMockProSubscriptionMonthly19USD',
@@ -712,18 +712,71 @@ describe('BillingService, Repositories, Stripe Integration & BillingController',
         placeholderConfig,
       );
 
-      const res = await devService.createSubscriptionCheckout(userWithoutSub, {
-        successUrl: 'http://localhost:5173/dashboard?payment=success',
-        cancelUrl: 'http://localhost:5173/dashboard?payment=cancelled',
-      });
-
-      expect(res.checkoutUrl).toBe(
-        'http://localhost:5173/dashboard?payment=success',
+      // 1. Subscription Checkout redirects to interactive Stripe Sandbox UI without premature upgrade
+      const subCheckout = await devService.createSubscriptionCheckout(
+        userWithoutSub,
+        {
+          successUrl: 'http://localhost:5173/dashboard?payment=success',
+          cancelUrl: 'http://localhost:5173/dashboard?payment=cancelled',
+        },
       );
+
+      expect(subCheckout.checkoutUrl).toContain('stripe_sandbox=checkout');
+      expect(subCheckout.checkoutUrl).toContain('mode=subscription');
+      expect(usersService.updatePlanTier).not.toHaveBeenCalled();
+
+      // Confirming on the Stripe Sandbox UI promotes user to PRO
+      const completedSub = await devService.completeSandboxCheckout(
+        userWithoutSub,
+        {
+          mode: 'subscription',
+          sessionId: 'cs_sandbox_sub_1',
+        },
+      );
+      expect(completedSub.plan).toBe('PRO');
       expect(usersService.updatePlanTier).toHaveBeenCalledWith(
         userWithoutSub.sub,
         'PRO',
       );
+
+      // 2. Physical Order Checkout redirects to interactive Stripe Sandbox UI with pending order
+      stripeService.createPaymentCheckoutSession.mockRejectedValueOnce(
+        Object.assign(new Error('Invalid API Key provided: sk_test_****66'), {
+          type: 'StripeAuthenticationError',
+        }),
+      );
+      const physCheckout = await devService.createPhysicalOrderCheckout(
+        userWithoutSub,
+        {
+          items: [{ itemType: 'acrylic_stand', quantity: 2 }],
+          shippingAddress: {
+            fullName: 'Kevin Dev',
+            addressLine1: 'Blvd Morazan',
+            city: 'Tegucigalpa',
+            phone: '+50499998888',
+          },
+          successUrl: 'http://localhost:5173/dashboard?order=success',
+          cancelUrl: 'http://localhost:5173/dashboard?order=cancelled',
+        },
+      );
+
+      expect(physCheckout.checkoutUrl).toContain('stripe_sandbox=checkout');
+      expect(physCheckout.checkoutUrl).toContain('mode=payment');
+      expect(physCheckout.checkoutUrl).toContain('orderId=order-123');
+      expect(storedOrders[0].paymentStatus).toBe('pending');
+
+      // Confirming on the Stripe Sandbox UI marks order paid + in_production
+      const completedOrder = await devService.completeSandboxCheckout(
+        userWithoutSub,
+        {
+          mode: 'payment',
+          orderId: 'order-123',
+          sessionId: 'cs_sandbox_order_order-123',
+        },
+      );
+      expect(completedOrder.success).toBe(true);
+      expect(storedOrders[0].paymentStatus).toBe('paid');
+      expect(storedOrders[0].fulfillmentStatus).toBe('in_production');
     });
   });
 });

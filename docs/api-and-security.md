@@ -34,6 +34,7 @@ Con `SWAGGER_ENABLED=true`, el servidor expone automáticamente:
 | `POST` | `/billing/checkout/subscription` | Bearer JWT | `201` | Crea sesión de Stripe Checkout (`mode: subscription`) usando `dto.priceId` o `STRIPE_PRO_PRICE_ID`. |
 | `GET` | `/billing/portal` | Bearer JWT | `200` | Genera URL temporal al Stripe Customer Portal (`?returnUrl=...`). |
 | `POST` | `/billing/simulate-upgrade` | Bearer JWT | `200` | Activa el plan `PRO` directamente en entorno dev/pruebas garantizando integridad FK y rotando `accessToken`. |
+| `POST` | `/billing/checkout/sandbox/complete` | Bearer JWT | `200` | Confirma el cobro con tarjeta desde la UI interactiva de Stripe Checkout Sandbox (`subscription` o `payment`). |
 | `POST` | `/billing/cancel` | Bearer JWT | `200` | Cancela la suscripción activa, revierte la cuenta a `STARTER` y rota `accessToken`. |
 | `POST` | `/billing/checkout/physical` | Bearer JWT | `201` | Crea orden de hardware QR/NFC y sesión de Stripe Checkout (`mode: payment`), sujeto a `ENABLE_PHYSICAL_ORDERS`. |
 | `POST` | `/billing/orders/direct` | Bearer JWT | `201` | Emite directamente una orden física de producción (`in_production` / `paid`), sujeto a `ENABLE_PHYSICAL_ORDERS`. |
