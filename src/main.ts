@@ -24,8 +24,20 @@ async function bootstrap(): Promise<void> {
     { rawBody: true },
   );
 
+  const configService = app.get(ConfigService);
+  const nodeEnv = configService.get<string>('NODE_ENV', 'development');
+  const corsOrigin = configService.get<string>('CORS_ORIGIN');
+  const resolvedOrigin =
+    corsOrigin && corsOrigin.trim().length > 0
+      ? corsOrigin.includes(',')
+        ? corsOrigin.split(',').map((origin) => origin.trim())
+        : corsOrigin.trim()
+      : nodeEnv === 'production'
+        ? false
+        : true;
+
   app.enableCors({
-    origin: true,
+    origin: resolvedOrigin,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
@@ -47,7 +59,6 @@ async function bootstrap(): Promise<void> {
 
   setupOpenApi(app);
 
-  const configService = app.get(ConfigService);
   const port = Number(configService.get<number>('PORT', 3000));
   const host = configService.get<string>('HOST', '0.0.0.0');
   const swaggerPath = configService.get<string>('SWAGGER_PATH', 'docs');

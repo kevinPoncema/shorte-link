@@ -154,7 +154,24 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       return 0;
     }
 
-    await this.persistBatch(recordsToInsert);
+    try {
+      await this.persistBatch(recordsToInsert);
+    } catch (err: unknown) {
+      this.logger.error(
+        `Failed to persist ${recordsToInsert.length} click events in PostgreSQL: ${(err as Error).message}. Re-enqueueing into Redis to prevent data loss.`,
+        (err as Error).stack,
+      );
+      try {
+        if (typeof this.cacheService.reEnqueueClickEventsBatch === 'function') {
+          await this.cacheService.reEnqueueClickEventsBatch(rawEvents);
+        }
+      } catch (reEnqueueErr: unknown) {
+        this.logger.error(
+          `Critical error: Failed to re-enqueue click events into Redis: ${(reEnqueueErr as Error).message}`,
+        );
+      }
+      throw err;
+    }
 
     this.logger.log(
       `Flushed ${recordsToInsert.length} click events from Redis RAM into PostgreSQL link_events.`,

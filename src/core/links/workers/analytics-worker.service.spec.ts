@@ -22,6 +22,7 @@ describe('AnalyticsWorkerService (Orchestrator Pattern - Happy, Sad & Edge Cases
 
     cacheServiceMock = {
       popClickEventsBatch: jest.fn().mockResolvedValue([]),
+      reEnqueueClickEventsBatch: jest.fn().mockResolvedValue(undefined),
     };
 
     linkRepositoryMock = {
@@ -296,6 +297,33 @@ describe('AnalyticsWorkerService (Orchestrator Pattern - Happy, Sad & Edge Cases
 
       const result = await workerService.runCycle();
       expect(result).toBe(0);
+    });
+
+    it('re-enqueues events back into Redis if PostgreSQL batch persistence fails', async () => {
+      const sampleEvents: ClickQueuePayload[] = [
+        {
+          linkId: 'link-uuid-1',
+          shortCode: 'qr-1',
+          ipAddress: '127.0.0.1',
+          country: 'HN',
+          userAgent: 'TestBrowser',
+          referer: null,
+          scannedAt: '2026-10-31T15:00:00.000Z',
+        },
+      ];
+
+      (cacheServiceMock.popClickEventsBatch as jest.Mock).mockResolvedValue(
+        sampleEvents,
+      );
+      (linkEventRepositoryMock.insertBatch as jest.Mock).mockRejectedValue(
+        new Error('Database deadlock / connection timeout'),
+      );
+
+      const result = await workerService.runCycle();
+      expect(result).toBe(0);
+      expect(cacheServiceMock.reEnqueueClickEventsBatch).toHaveBeenCalledWith(
+        sampleEvents,
+      );
     });
 
     it('initializes timer on module init and runs cycle periodically', () => {

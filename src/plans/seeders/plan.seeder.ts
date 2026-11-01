@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import {
   IPlanRepository,
   PLAN_REPOSITORY,
@@ -13,12 +13,13 @@ import { StarterPlanStrategy } from '../strategies/starter-plan.strategy';
 /**
  * Seeder de base de datos para la siembra idempotente del catálogo de planes.
  *
- * Desacoplado del servicio en memoria `PlanContextService`. Se ejecuta como comando
- * CLI o en el arranque del contenedor antes de iniciar la API para asegurar
- * la existencia de los planes en PostgreSQL y evitar errores de integridad referencial.
+ * Desacoplado del servicio en memoria `PlanContextService`. Se ejecuta automáticamente
+ * al inicializar el módulo (`OnModuleInit`), mediante comando CLI (`npm run seed`) o
+ * en el arranque del contenedor antes de iniciar la API para asegurar la existencia de los
+ * planes en PostgreSQL y evitar errores de integridad referencial.
  */
 @Injectable()
-export class PlanSeeder {
+export class PlanSeeder implements OnModuleInit {
   private readonly logger = new Logger(PlanSeeder.name);
 
   constructor(
@@ -28,6 +29,19 @@ export class PlanSeeder {
     @Inject(PLAN_STRATEGIES)
     private readonly registeredStrategies: PlanStrategy[] = [],
   ) {}
+
+  /**
+   * Ejecuta la siembra automática al arrancar el módulo si la base de datos está disponible.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.seed();
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Auto-seeding de planes en OnModuleInit omitido o fallido: ${(err as Error).message}`,
+      );
+    }
+  }
 
   /**
    * Ejecuta la siembra idempotente del catálogo de planes en la base de datos.

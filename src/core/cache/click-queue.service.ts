@@ -25,6 +25,21 @@ export class ClickQueueService {
   }
 
   /**
+   * Reinserta en bloque una lista de eventos al inicio de la cola Redis (`LPUSH queue:clicks`)
+   * para prevenir pérdida de datos en caso de errores transitorios en la base de datos.
+   */
+  async reEnqueueBatch(events: ClickEventPayload[]): Promise<void> {
+    if (!events || events.length === 0) {
+      return;
+    }
+    const pipeline = this.redis.pipeline();
+    for (const event of events) {
+      pipeline.lpush(CLICKS_QUEUE_KEY, JSON.stringify(event));
+    }
+    await pipeline.exec();
+  }
+
+  /**
    * Extrae en lote hasta `batchSize` eventos del final de la cola Redis (`RPOP queue:clicks`),
    * liberando memoria RAM de Redis para que el worker los persista en PostgreSQL.
    */

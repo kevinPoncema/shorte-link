@@ -167,6 +167,26 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Re-encola una lista de eventos en Redis (`LPUSH queue:clicks`) para evitar pérdida de datos
+   * cuando la persistencia en PostgreSQL falla.
+   */
+  async reEnqueueClickEventsBatch(
+    events: ClickEventPayload[],
+  ): Promise<void> {
+    if (this.clickQueueService) {
+      return this.clickQueueService.reEnqueueBatch(events);
+    }
+    if (!events || events.length === 0) {
+      return;
+    }
+    const pipeline = this.redis.pipeline();
+    for (const event of events) {
+      pipeline.lpush(CLICKS_QUEUE_KEY, JSON.stringify(event));
+    }
+    await pipeline.exec();
+  }
+
+  /**
    * Retorna la cantidad de eventos encolados pendientes en Redis (`LLEN queue:clicks`).
    * @deprecated Preferir inyectar y utilizar directamente `ClickQueueService`.
    */

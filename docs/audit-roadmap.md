@@ -126,7 +126,7 @@ Punto de entrada de la aplicación y configuración de despliegue.
 ## 3. Checklist de Comprobación Rápida al Finalizar
 
 Al concluir la revisión de cada módulo:
-- [ ] Ejecutar pruebas unitarias específicas: `npm test -- <nombre_del_servicio>`
-- [ ] Validar cobertura de código: `npm run test:cov`
-- [ ] Ejecutar suite E2E completa: `npm run test:e2e`
-- [ ] Validar compilación limpia de TypeScript: `npm run build`
+- [x] Ejecutar pruebas unitarias específicas: `npm test -- <nombre_del_servicio>`
+- [x] Validar cobertura de código: `npm run test:cov`
+- [x] Ejecutar suite E2E completa: `npm run test:e2e`
+- [x] Validar compilación limpia de TypeScript: `npm run build`

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { BasePlanStrategy, PlanConfig } from './base-plan.strategy';
 
 export const PRO_MAX_ACTIVE_LINKS = 50;
@@ -28,7 +28,7 @@ export const PRO_PLAN_CONFIG: PlanConfig = Object.freeze({
  */
 @Injectable()
 export class ProPlanStrategy extends BasePlanStrategy {
-  constructor(config: PlanConfig = PRO_PLAN_CONFIG) {
-    super(config);
+  constructor(@Optional() config: PlanConfig = PRO_PLAN_CONFIG) {
+    super(config || PRO_PLAN_CONFIG);
   }
 }

@@ -47,6 +47,7 @@ import { PLAN_STRATEGIES } from '../src/plans/interfaces/plan-strategy.interface
 import { Plan } from '../src/plans/models/plan.entity';
 import { TypeOrmPlanRepository } from '../src/plans/repositories/typeorm-plan.repository';
 import { PlanContextService } from '../src/plans/services/plan-context.service';
+import { PlanSeeder } from '../src/plans/seeders/plan.seeder';
 import { ProPlanStrategy } from '../src/plans/strategies/pro-plan.strategy';
 import { StarterPlanStrategy } from '../src/plans/strategies/starter-plan.strategy';
 
@@ -147,6 +148,7 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
     };
 
     const plansRepo = {
+      find: async () => [...plansStore],
       findOne: async ({ where }: { where: { id: string } }) =>
         plansStore.find((p) => p.id === where.id) ?? null,
       create: (partial: Partial<Plan>) => partial as Plan,
@@ -376,6 +378,7 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
           inject: [StarterPlanStrategy, ProPlanStrategy],
         },
         PlanContextService,
+        PlanSeeder,
         { provide: REDIS_CLIENT, useValue: inMemoryRedis },
         CacheService,
         UsersService,
