@@ -2,27 +2,28 @@
 
 Backend de alta concurrencia para acortamiento de enlaces y códigos QR dinámicos construido con **NestJS 11**, **Fastify**, **PostgreSQL** (`TypeORM`), **Redis** (`ioredis`) y **OpenAPI 3.0**.
 
-## Inicio Rápido
+## Inicio Rápido (Stack Completo con Docker)
 
 ```bash
 cp .env.example .env
-docker compose up -d
-npm install
-npm run start:dev
+docker compose up -d --build
 ```
 
-- **API Base:** `http://localhost:3000`
-- **Swagger UI:** `http://localhost:3000/docs` (`/docs-json`, `/docs-yaml`)
+- **Frontend UI:** `http://localhost:5173`
+- **Backend API:** `http://localhost:3000`
+- **Swagger Docs:** `http://localhost:3000/docs` (`/docs-json`, `/docs-yaml`)
 
 ## Scripts
 
 ```bash
-npm run start:dev   # Desarrollo con hot-reload
-npm run build       # Compilación a dist/
-npm run start:prod  # Ejecución de producción
-npm test            # Pruebas unitarias
-npm run test:cov    # Cobertura de pruebas
-npm run test:e2e    # Pruebas E2E sobre Fastify
+npm run start:dev       # Backend en desarrollo con hot-reload (:3000)
+npm run dev:frontend    # Frontend React + Vite con Tailwind (:5173)
+npm run build           # Compilación del backend a dist/
+npm run build:frontend  # Compilación del frontend a frontend/dist/
+npm run start:prod      # Ejecución del backend en producción
+npm test                # Pruebas unitarias
+npm run test:cov        # Cobertura de pruebas
+npm run test:e2e        # Pruebas E2E sobre Fastify
 ```
 
 ## Documentación

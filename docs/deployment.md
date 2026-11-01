@@ -9,40 +9,34 @@ Lineamientos de infraestructura, contenerización y operación en producción.
 ```mermaid
 flowchart LR
   Internet([Tráfico Público])
-  Proxy["Reverse Proxy / CDN\n(TLS + X-Forwarded-For)"]
-  API["Contenedor API\nNestJS + Fastify\n(node:20-alpine, USER node)"]
-  Redis[("Redis 7\nmaxmemory-policy allkeys-lru")]
-  PG[("PostgreSQL 16")]
+  ClientUI["Frontend SPA\n(React + Vite + Nginx :5173)"]
+  API["Backend API\n(NestJS + Fastify :3000)"]
+  Redis[("Redis 7\nallkeys-lru :6379")]
+  PG[("PostgreSQL 16 :5432")]
 
-  Internet --> Proxy
-  Proxy -->|"HTTP :3000"| API
-  API -->|"Data Plane"| Redis
+  Internet -->|"Navegador"| ClientUI
+  Internet -->|"Redirección /:shortCode"| API
+  ClientUI -->|"REST API /auth, /links"| API
+  API -->|"Data Plane (RAM)"| Redis
   API -->|"Control Plane"| PG
 ```
 
 ---
 
-## 2. Imagen Docker de Producción
+## 2. Orquestación Completa con Docker Compose
 
-El `Dockerfile` utiliza construcción **multi-stage** sobre `node:20-alpine`, poda dependencias de desarrollo (`npm prune --omit=dev`) y ejecuta el proceso bajo el usuario sin privilegios `node`.
-
-```bash
-# Construir imagen
-docker build -t dynamic-qr-api:latest .
-
-# Ejecutar contenedor
-docker run -d \
-  --name dynamic-qr-api \
-  -p 3000:3000 \
-  --env-file .env \
-  dynamic-qr-api:latest
-```
-
-Para infraestructura auxiliar local o staging (`postgres:16-alpine` + `redis:7-alpine` con `allkeys-lru` y `healthcheck`):
+El archivo `docker-compose.yml` orquesta los 4 servicios integrados con redes internas y healthchecks:
 
 ```bash
-docker compose up -d
+# Levantar stack completo (PostgreSQL + Redis + API + Frontend)
+docker compose up -d --build
 ```
+
+- **Frontend:** `http://localhost:5173` (Nginx sirviendo SPA construida con Vite y React)
+- **Backend API:** `http://localhost:3000` (FastifyAdapter con trustProxy)
+- **Swagger Docs:** `http://localhost:3000/docs`
+- **PostgreSQL 16:** `localhost:5432`
+- **Redis 7:** `localhost:6379` (con `--maxmemory-policy allkeys-lru`)
 
 ---
 
