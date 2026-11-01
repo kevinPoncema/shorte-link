@@ -3,6 +3,7 @@ dist
 coverage
 test
 docs
+frontend
 .git
 .gitignore
 .env
