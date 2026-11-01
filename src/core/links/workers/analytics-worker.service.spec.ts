@@ -67,6 +67,7 @@ describe('AnalyticsWorkerService (Orchestrator Pattern - Happy, Sad & Edge Cases
           linkId: 'link-uuid-1',
           shortCode: 'brand-qr',
           ipAddress: '190.12.50.1',
+          country: 'hn',
           userAgent:
             'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
           referer: ' https://whatsapp.com/ ',
@@ -75,6 +76,7 @@ describe('AnalyticsWorkerService (Orchestrator Pattern - Happy, Sad & Edge Cases
         {
           shortCode: 'summer-sale',
           ipAddress: '181.115.22.4',
+          country: null,
           userAgent:
             'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
           referer: null,
@@ -106,7 +108,7 @@ describe('AnalyticsWorkerService (Orchestrator Pattern - Happy, Sad & Edge Cases
         linkId: 'link-uuid-1',
         ipAddress: '190.12.50.1',
         userAgent: expect.any(String),
-        country: null,
+        country: 'HN',
         os: 'iOS',
         browser: 'Mobile Safari',
         referer: 'https://whatsapp.com/',

@@ -63,7 +63,15 @@ La configuración se carga globalmente mediante `@nestjs/config` desde variables
 
 ---
 
-## 6. Perfil Recomendado por Entorno
+## 6. Geolocalización y Proxy Inverso (Cloudflare / Nginx / GeoIP)
+
+| Variable | Default | Descripción |
+| :--- | :--- | :--- |
+| `DEV_GEOIP_FALLBACK_COUNTRY` | `HN` | Código de país ISO-2 por defecto cuando se ejecutan pruebas en loopback (`127.0.0.1`, `::1`) o subredes privadas (ej. Docker `172.x`). En producción con IPs públicas o detrás de Cloudflare (`cf-ipcountry`) / Nginx (`x-country-code`), se detecta automáticamente. |
+
+---
+
+## 7. Perfil Recomendado por Entorno
 
 | Parámetro | Desarrollo | Producción |
 | :--- | :--- | :--- |

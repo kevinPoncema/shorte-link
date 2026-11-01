@@ -7,6 +7,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiFoundResponse,
   ApiNotFoundResponse,
@@ -15,6 +16,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { resolveVisitorCountry } from '../helpers/country-resolver.helper';
 import { LinksService } from '../services/links.service';
 
 /**
@@ -24,7 +26,10 @@ import { LinksService } from '../services/links.service';
 @ApiTags('Redirect (Fast-Path)')
 @Controller()
 export class RedirectController {
-  constructor(private readonly linksService: LinksService) {}
+  constructor(
+    private readonly linksService: LinksService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * Resuelve un `shortCode` desde Redis (o PostgreSQL en Cache Miss), encola métricas
@@ -73,10 +78,22 @@ export class RedirectController {
     const refererHeader =
       request.headers['referer'] ?? request.headers['referrer'];
 
+    const fallbackCountry = this.configService.get<string>(
+      'DEV_GEOIP_FALLBACK_COUNTRY',
+      'HN',
+    );
+
+    const country = resolveVisitorCountry(
+      request.headers as Record<string, string | string[] | undefined>,
+      request.ip,
+      fallbackCountry,
+    );
+
     this.linksService.recordClickAsync({
       shortCode,
       linkId: resolved.linkId,
       rawIp: request.ip,
+      country,
       userAgent: Array.isArray(userAgentHeader)
         ? userAgentHeader[0]
         : userAgentHeader,

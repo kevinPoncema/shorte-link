@@ -655,6 +655,7 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
     expect(queuedClicks.length).toBe(1);
     const clickEvent = JSON.parse(queuedClicks[0]);
     expect(clickEvent.shortCode).toBe(shortCode);
+    expect(clickEvent.country).toBe('HN');
     expect(clickEvent.ipAddress).not.toBe('203.0.113.55');
 
     // Update targetUrl -> reactive DEL r:{shortCode} -> Cache Miss repopulates Redis

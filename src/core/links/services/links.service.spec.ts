@@ -140,7 +140,7 @@ describe('LinksService, TypeOrmLinkRepository, LinksController & RedirectControl
     );
 
     linksController = new LinksController(linksService);
-    redirectController = new RedirectController(linksService);
+    redirectController = new RedirectController(linksService, configService);
   });
 
   describe('createLink (Happy, Sad & Edge Cases)', () => {

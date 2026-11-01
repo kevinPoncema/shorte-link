@@ -221,6 +221,7 @@ export class LinksService {
     shortCode: string;
     linkId?: string;
     rawIp?: string;
+    country?: string | null;
     userAgent?: string;
     referer?: string;
   }): void {
@@ -564,6 +565,7 @@ export class LinksService {
     shortCode: string;
     linkId?: string;
     rawIp?: string;
+    country?: string | null;
     userAgent?: string;
     referer?: string;
   }): ClickEventPayload {
@@ -571,6 +573,7 @@ export class LinksService {
       shortCode: params.shortCode,
       linkId: params.linkId,
       ipAddress: this.anonymizeIp(params.rawIp ?? '0.0.0.0'),
+      country: params.country ?? null,
       userAgent: params.userAgent ?? null,
       referer: params.referer ?? null,
       scannedAt: new Date().toISOString(),

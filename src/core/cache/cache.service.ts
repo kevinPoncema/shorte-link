@@ -17,6 +17,7 @@ export interface ClickQueuePayload {
   shortCode: string;
   linkId?: string;
   ipAddress: string;
+  country?: string | null;
   userAgent: string | null;
   referer: string | null;
   scannedAt: string;

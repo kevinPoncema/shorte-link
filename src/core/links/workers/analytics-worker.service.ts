@@ -233,7 +233,7 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
         linkId,
         ipAddress: event.ipAddress,
         userAgent: event.userAgent ?? null,
-        country: null, // Si se dispone de GeoIP en Fastify/Cloudflare, se mapea aquí
+        country: event.country ? event.country.trim().toUpperCase() : null,
         os,
         browser,
         referer: event.referer ? event.referer.trim() : null,
