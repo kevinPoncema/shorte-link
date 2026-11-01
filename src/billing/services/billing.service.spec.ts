@@ -1,11 +1,14 @@
 import { JwtPayload } from '../../core/auth/interfaces/jwt-payload.interface';
 import { BillingController } from '../controllers/billing.controller';
+import { ISubscriptionRepository } from '../interfaces/subscription-repository.interface';
 import { Subscription } from '../models/subscription.entity';
+import { TypeOrmSubscriptionRepository } from '../repositories/typeorm-subscription.repository';
 import { BillingService } from './billing.service';
 
-describe('BillingService & BillingController', () => {
+describe('BillingService, TypeOrmSubscriptionRepository & BillingController', () => {
   let billingService: BillingService;
   let billingController: BillingController;
+  let subscriptionRepository: ISubscriptionRepository;
   let storedSubscriptions: Subscription[];
 
   const userWithSub: JwtPayload = {
@@ -35,13 +38,16 @@ describe('BillingService & BillingController', () => {
       },
     ];
 
-    const repoMock = {
+    const ormRepoMock = {
       findOne: jest.fn(async ({ where }: { where: { userId: string } }) =>
         storedSubscriptions.find((s) => s.userId === where.userId) ?? null,
       ),
     };
 
-    billingService = new BillingService(repoMock as never);
+    subscriptionRepository = new TypeOrmSubscriptionRepository(
+      ormRepoMock as never,
+    );
+    billingService = new BillingService(subscriptionRepository);
     billingController = new BillingController(billingService);
   });
 

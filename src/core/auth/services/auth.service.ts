@@ -1,19 +1,25 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
-import { Plan } from '../../../plans/models/plan.entity';
+import {
+  IPlanRepository,
+  PLAN_REPOSITORY,
+} from '../../../plans/interfaces/plan-repository.interface';
 import { User } from '../../models/user.entity';
 import { AuthResponseDto } from '../dto/auth-response.dto';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import {
+  IUserRepository,
+  USER_REPOSITORY,
+} from '../interfaces/user-repository.interface';
 
 /**
  * Identificador del plan asignado automáticamente a toda cuenta nueva durante el registro.
@@ -23,96 +29,150 @@ export const DEFAULT_PLAN_ID = 'DEFAULT';
 export type AuthResponse = AuthResponseDto;
 
 /**
- * Servicio de autenticación del Control Plane.
- * Gestiona el alta de usuarios con hashing `bcrypt`, asignación del plan por defecto
- * y emisión de tokens JWT stateless con información de plan embebida.
+ * Servicio de dominio de autenticación del Control Plane.
+ * Implementa el patrón **Orquestador** y los principios **SOLID** (SRP, DIP),
+ * dependiendo exclusivamente de contratos de repositorio (`IUserRepository`, `IPlanRepository`)
+ * sin acoplamiento con TypeORM.
  */
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectRepository(User)
-    private readonly usersRepository: Repository<User>,
-    @InjectRepository(Plan)
-    private readonly plansRepository: Repository<Plan>,
+    @Inject(USER_REPOSITORY)
+    private readonly userRepository: IUserRepository,
+    @Inject(PLAN_REPOSITORY)
+    private readonly planRepository: IPlanRepository,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
 
   /**
-   * Registra un nuevo usuario, garantiza la existencia del plan `'DEFAULT'` en PostgreSQL,
-   * almacena el hash `bcrypt` de su contraseña y retorna un JWT firmado.
+   * **Orquestador de Registro de Usuario (`POST /auth/register`):**
+   * 1. Normaliza el correo electrónico.
+   * 2. Verifica disponibilidad del correo en el dominio.
+   * 3. Garantiza la existencia del plan base (`DEFAULT`).
+   * 4. Genera el hash criptográfico de la contraseña.
+   * 5. Persiste la nueva entidad de usuario.
+   * 6. Construye la respuesta de sesión con su token JWT firmado.
    *
    * @param dto Credenciales de registro validadas.
    * @throws {ConflictException} Cuando el correo electrónico ya se encuentra registrado.
    */
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
-    const normalizedEmail = dto.email.trim().toLowerCase();
-
-    const existingUser = await this.usersRepository.findOne({
-      where: { email: normalizedEmail },
-    });
-
-    if (existingUser) {
-      throw new ConflictException('Email is already registered');
-    }
-
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    await this.assertEmailIsAvailable(normalizedEmail);
     await this.ensureDefaultPlanExists();
 
-    const saltRounds = Number(
-      this.configService.get<number>('BCRYPT_SALT_ROUNDS', 10),
-    );
-    const passwordHash = await bcrypt.hash(dto.password, saltRounds);
+    const passwordHash = await this.hashPassword(dto.password);
+    const savedUser = await this.persistNewUser(normalizedEmail, passwordHash);
 
-    const user = this.usersRepository.create({
-      email: normalizedEmail,
-      password: passwordHash,
-      planId: DEFAULT_PLAN_ID,
-    });
-
-    const savedUser = await this.usersRepository.save(user);
-    const planKey = savedUser.planId ?? DEFAULT_PLAN_ID;
-    const accessToken = await this.signToken({
-      sub: savedUser.id,
-      email: savedUser.email,
-      plan: planKey,
-    });
-
-    return {
-      accessToken,
-      user: {
-        id: savedUser.id,
-        email: savedUser.email,
-        plan: planKey,
-        createdAt: savedUser.createdAt,
-      },
-    };
+    return this.buildAuthSessionResponse(savedUser);
   }
 
   /**
-   * Autentica a un usuario existente verificando su contraseña contra el hash `bcrypt`
-   * y firma un nuevo token JWT stateless.
+   * **Orquestador de Inicio de Sesión (`POST /auth/login`):**
+   * 1. Normaliza el correo electrónico.
+   * 2. Recupera el usuario con su hash de contraseña o lanza error de credenciales.
+   * 3. Verifica la coincidencia criptográfica de la contraseña.
+   * 4. Construye la respuesta de sesión con un nuevo token JWT stateless.
    *
    * @param dto Credenciales de acceso.
    * @throws {UnauthorizedException} Cuando el correo no existe o la contraseña no coincide.
    */
   async login(dto: LoginDto): Promise<AuthResponseDto> {
-    const normalizedEmail = dto.email.trim().toLowerCase();
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    const user = await this.getUserWithCredentialsOrThrow(normalizedEmail);
+    await this.verifyPasswordOrThrow(dto.password, user.password);
 
-    const user = await this.usersRepository
-      .createQueryBuilder('user')
-      .addSelect('user.password')
-      .where('user.email = :email', { email: normalizedEmail })
-      .getOne();
+    return this.buildAuthSessionResponse(user);
+  }
 
+  // ===========================================================================
+  // Funciones Auxiliares de Dominio (Single Responsibility Principle)
+  // ===========================================================================
+
+  /**
+   * Normaliza un correo electrónico recortando espacios y convirtiendo a minúsculas.
+   */
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
+  /**
+   * Comprueba que ningún otro usuario tenga registrado el correo electrónico indicado.
+   */
+  private async assertEmailIsAvailable(email: string): Promise<void> {
+    const existingUser = await this.userRepository.findByEmail(email);
+    if (existingUser) {
+      throw new ConflictException('Email is already registered');
+    }
+  }
+
+  /**
+   * Garantiza de forma idempotente que el plan `'DEFAULT'` exista en el repositorio de planes.
+   */
+  private async ensureDefaultPlanExists(): Promise<void> {
+    const existingPlan = await this.planRepository.findById(DEFAULT_PLAN_ID);
+    if (!existingPlan) {
+      await this.planRepository.createAndSave({
+        id: DEFAULT_PLAN_ID,
+        name: 'Default',
+        isActive: true,
+      });
+    }
+  }
+
+  /**
+   * Calcula el hash `bcrypt` de una contraseña en texto plano según las rondas configuradas.
+   */
+  private async hashPassword(plainPassword: string): Promise<string> {
+    const saltRounds = Number(
+      this.configService.get<number>('BCRYPT_SALT_ROUNDS', 10),
+    );
+    return bcrypt.hash(plainPassword, saltRounds);
+  }
+
+  /**
+   * Crea y almacena un nuevo usuario asignándole el plan por defecto.
+   */
+  private async persistNewUser(
+    email: string,
+    passwordHash: string,
+  ): Promise<User> {
+    return this.userRepository.createAndSave({
+      email,
+      password: passwordHash,
+      planId: DEFAULT_PLAN_ID,
+    });
+  }
+
+  /**
+   * Obtiene un usuario junto con su hash de contraseña o lanza `UnauthorizedException`.
+   */
+  private async getUserWithCredentialsOrThrow(email: string): Promise<User> {
+    const user = await this.userRepository.findByEmailWithPassword(email);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
+    return user;
+  }
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+  /**
+   * Compara la contraseña suministrada contra el hash `bcrypt` almacenado.
+   */
+  private async verifyPasswordOrThrow(
+    plainPassword: string,
+    passwordHash: string,
+  ): Promise<void> {
+    const isPasswordValid = await bcrypt.compare(plainPassword, passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
+  }
 
+  /**
+   * Construye el DTO de respuesta de autenticación firmando el token JWT del usuario.
+   */
+  private async buildAuthSessionResponse(user: User): Promise<AuthResponseDto> {
     const planKey = user.planId ?? DEFAULT_PLAN_ID;
     const accessToken = await this.signToken({
       sub: user.id,
@@ -129,26 +189,6 @@ export class AuthService {
         createdAt: user.createdAt,
       },
     };
-  }
-
-  /**
-   * Garantiza de forma idempotente que la fila `'DEFAULT'` exista en la tabla `plans`
-   * antes de insertar el usuario con clave foránea `plan_id`.
-   */
-  private async ensureDefaultPlanExists(): Promise<void> {
-    const existingPlan = await this.plansRepository.findOne({
-      where: { id: DEFAULT_PLAN_ID },
-    });
-
-    if (!existingPlan) {
-      await this.plansRepository.save(
-        this.plansRepository.create({
-          id: DEFAULT_PLAN_ID,
-          name: 'Default',
-          isActive: true,
-        }),
-      );
-    }
   }
 
   /**

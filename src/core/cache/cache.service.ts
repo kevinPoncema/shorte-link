@@ -22,6 +22,8 @@ export interface ClickQueuePayload {
   scannedAt: string;
 }
 
+export type ClickEventPayload = ClickQueuePayload;
+
 /**
  * Servicio de acceso a la capa en memoria Redis (Data Plane & Analytics Queue).
  * Administra el ciclo de vida de claves `r:{shortCode}` bajo política `allkeys-lru`

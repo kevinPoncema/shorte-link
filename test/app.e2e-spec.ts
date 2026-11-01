@@ -9,11 +9,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { BillingController } from '../src/billing/controllers/billing.controller';
+import { SUBSCRIPTION_REPOSITORY } from '../src/billing/interfaces/subscription-repository.interface';
 import { Subscription } from '../src/billing/models/subscription.entity';
+import { TypeOrmSubscriptionRepository } from '../src/billing/repositories/typeorm-subscription.repository';
 import { BillingService } from '../src/billing/services/billing.service';
 import { AuthController } from '../src/core/auth/controllers/auth.controller';
 import { JwtAuthGuard } from '../src/core/auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../src/core/auth/interfaces/jwt-payload.interface';
+import { USER_REPOSITORY } from '../src/core/auth/interfaces/user-repository.interface';
+import { TypeOrmUserRepository } from '../src/core/auth/repositories/typeorm-user.repository';
 import { AuthService } from '../src/core/auth/services/auth.service';
 import {
   CLICKS_QUEUE_KEY,
@@ -22,12 +26,16 @@ import {
 } from '../src/core/cache/cache.service';
 import { LinksController } from '../src/core/links/controllers/links.controller';
 import { RedirectController } from '../src/core/links/controllers/redirect.controller';
+import { LINK_REPOSITORY } from '../src/core/links/interfaces/link-repository.interface';
+import { TypeOrmLinkRepository } from '../src/core/links/repositories/typeorm-link.repository';
 import { LinksService } from '../src/core/links/services/links.service';
 import { Link } from '../src/core/models/link.entity';
 import { User } from '../src/core/models/user.entity';
 import { JWT_BEARER_AUTH, setupOpenApi } from '../src/openapi.config';
+import { PLAN_REPOSITORY } from '../src/plans/interfaces/plan-repository.interface';
 import { PLAN_STRATEGIES } from '../src/plans/interfaces/plan-strategy.interface';
 import { Plan } from '../src/plans/models/plan.entity';
+import { TypeOrmPlanRepository } from '../src/plans/repositories/typeorm-plan.repository';
 import { PlanContextService } from '../src/plans/services/plan-context.service';
 import { DefaultPlanStrategy } from '../src/plans/strategies/default-plan.strategy';
 
@@ -209,6 +217,13 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
         {
           provide: getRepositoryToken(Subscription),
           useValue: subscriptionsRepo,
+        },
+        { provide: USER_REPOSITORY, useClass: TypeOrmUserRepository },
+        { provide: PLAN_REPOSITORY, useClass: TypeOrmPlanRepository },
+        { provide: LINK_REPOSITORY, useClass: TypeOrmLinkRepository },
+        {
+          provide: SUBSCRIPTION_REPOSITORY,
+          useClass: TypeOrmSubscriptionRepository,
         },
       ],
     }).compile();

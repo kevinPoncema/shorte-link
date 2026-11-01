@@ -2,22 +2,26 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomInt } from 'crypto';
 import * as QRCode from 'qrcode';
-import { Repository } from 'typeorm';
+import { PlanStrategy } from '../../../plans/interfaces/plan-strategy.interface';
 import { PlanContextService } from '../../../plans/services/plan-context.service';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { CacheService } from '../../cache/cache.service';
-import { Link } from '../../models/link.entity';
+import { CacheService, ClickEventPayload } from '../../cache/cache.service';
+import { Link, QrConfig } from '../../models/link.entity';
 import { CreateLinkDto } from '../dto/create-link.dto';
 import { UpdateLinkDto } from '../dto/update-link.dto';
+import {
+  ILinkRepository,
+  LINK_REPOSITORY,
+} from '../interfaces/link-repository.interface';
 
 const BASE62_ALPHABET =
   '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -65,112 +69,84 @@ export interface GeneratedQrResult {
 }
 
 /**
- * Servicio central de gestión de enlaces cortos, renderizado de códigos QR dinámicos,
- * sincronización con la caché Redis (`r:{shortCode}`) y registro asíncrono de métricas.
+ * Opciones normalizadas de renderizado para la librería `qrcode`.
+ */
+interface NormalizedQrRenderOptions {
+  errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
+  margin: number;
+  width: number;
+  color: {
+    dark: string;
+    light: string;
+  };
+}
+
+/**
+ * Servicio de dominio de gestión de enlaces cortos y códigos QR dinámicos.
+ * Diseñado bajo el patrón **Orquestador** y los principios **SOLID** (SRP, OCP, DIP),
+ * delegando la persistencia exclusivamente al contrato `ILinkRepository`.
  */
 @Injectable()
 export class LinksService {
   private readonly logger = new Logger(LinksService.name);
 
   constructor(
-    @InjectRepository(Link)
-    private readonly linksRepository: Repository<Link>,
+    @Inject(LINK_REPOSITORY)
+    private readonly linkRepository: ILinkRepository,
     private readonly planContextService: PlanContextService,
     private readonly cacheService: CacheService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
+
+  // ===========================================================================
+  // Orquestadores de Casos de Uso (Public Business Orchestrators)
+  // ===========================================================================
 
   /**
-   * Crea un nuevo enlace corto aplicando las reglas de cuota y personalización
-   * definidas por la `PlanStrategy` del usuario, y precalienta Redis (`SET r:{shortCode}`).
-   *
-   * @param user Payload JWT del usuario autenticado.
-   * @param dto Parámetros de creación del enlace y configuración QR.
+   * **Orquestador de Creación de Enlace (`POST /links`):**
+   * 1. Resuelve la estrategia de plan aplicable al usuario.
+   * 2. Verifica el cumplimiento de cuotas (totales, activos y permisos de diseño QR).
+   * 3. Resuelve o genera criptográficamente un `shortCode` único.
+   * 4. Persiste la nueva entidad de dominio a través del repositorio.
+   * 5. Precalienta la caché Redis (`SET r:{shortCode}`).
    */
   async createLink(user: JwtPayload, dto: CreateLinkDto): Promise<Link> {
-    const strategy = this.planContextService.getStrategy(user.plan);
-    const totalUserLinks = await this.linksRepository.count({
-      where: { userId: user.sub },
-    });
+    const strategy = this.resolvePlanStrategy(user.plan);
+    await this.enforceCreationQuotas(user.sub, strategy, dto.qrConfig);
 
-    strategy.assertCanCreateLink(totalUserLinks);
+    const shortCode = await this.resolveOrAllocateShortCode(dto.shortCode);
+    const savedLink = await this.persistNewLink(user.sub, shortCode, dto);
 
-    const maxActiveLinks = strategy.getMaxActiveLinks();
-    if (Number.isFinite(maxActiveLinks)) {
-      const activeUserLinks = await this.linksRepository.count({
-        where: { userId: user.sub, isActive: true },
-      });
-      if (activeUserLinks >= maxActiveLinks) {
-        throw new ForbiddenException(
-          `Maximum active links quota (${maxActiveLinks}) reached for plan ${strategy.tierName}`,
-        );
-      }
-    }
-
-    if (
-      dto.qrConfig &&
-      Object.keys(dto.qrConfig).length > 0 &&
-      !strategy.canCustomizeQrDesign()
-    ) {
-      throw new ForbiddenException(
-        `Custom QR design is not available on plan ${strategy.tierName}`,
-      );
-    }
-
-    const shortCode = dto.shortCode
-      ? await this.validateCustomShortCode(dto.shortCode)
-      : await this.generateUniqueShortCode();
-
-    const link = this.linksRepository.create({
-      shortCode,
-      name: dto.name ? dto.name.trim() : null,
-      targetUrl: dto.targetUrl,
-      isActive: true,
-      qrConfig: dto.qrConfig ?? {},
-      userId: user.sub,
-    });
-
-    const savedLink = await this.linksRepository.save(link);
-
-    // Precalentamiento en Redis: SET r:{shortCode} {targetUrl}
-    await this.cacheService.setRedirectTarget(
-      savedLink.shortCode,
-      savedLink.targetUrl,
-    );
-
+    await this.warmUpRedirectCache(savedLink);
     return savedLink;
   }
 
   /**
-   * Lista todos los enlaces pertenecientes al usuario autenticado en orden cronológico inverso.
+   * **Orquestador de Listado de Enlaces (`GET /links`):**
+   * Recupera todos los enlaces pertenecientes al usuario autenticado en orden descendente.
    */
   async findAllByUser(userId: string): Promise<Link[]> {
-    return this.linksRepository.find({
-      where: { userId },
-      order: { createdAt: 'DESC' },
-    });
+    return this.linkRepository.findAllByUser(userId);
   }
 
   /**
-   * Obtiene un enlace verificando pertenencia estricta al usuario solicitante.
-   *
-   * @throws {NotFoundException} Si el enlace no existe o pertenece a otro usuario.
+   * **Orquestador de Consulta Individual con Control de Propiedad (`GET /links/:id`):**
+   * 1. Consulta el enlace restringiendo por propietario (`userId`).
+   * 2. Verifica existencia o lanza `NotFoundException` (prevención IDOR).
    */
   async findOneByUser(userId: string, linkId: string): Promise<Link> {
-    const link = await this.linksRepository.findOne({
-      where: { id: linkId, userId },
-    });
-
-    if (!link) {
-      throw new NotFoundException('Link not found');
-    }
-
+    const link = await this.linkRepository.findByIdAndUser(linkId, userId);
+    this.assertLinkExists(link);
     return link;
   }
 
   /**
-   * Actualiza destino, estado o diseño QR de un enlace en PostgreSQL y ejecuta
-   * invalidación reactiva obligatoria (`DEL r:{shortCode}`) en Redis.
+   * **Orquestador de Actualización de Enlace (`PATCH /links/:id`):**
+   * 1. Obtiene el enlace validando pertenencia del usuario.
+   * 2. Resuelve la estrategia del plan del usuario.
+   * 3. Valida las reglas de negocio y aplica las mutaciones parciales sobre la entidad.
+   * 4. Guarda la entidad actualizada en el repositorio.
+   * 5. Ejecuta invalidación reactiva inmediata en Redis (`DEL r:{shortCode}`).
    */
   async updateLink(
     user: JwtPayload,
@@ -178,69 +154,33 @@ export class LinksService {
     dto: UpdateLinkDto,
   ): Promise<Link> {
     const link = await this.findOneByUser(user.sub, linkId);
-    const strategy = this.planContextService.getStrategy(user.plan);
+    const strategy = this.resolvePlanStrategy(user.plan);
 
-    if (dto.qrConfig !== undefined) {
-      if (
-        Object.keys(dto.qrConfig).length > 0 &&
-        !strategy.canCustomizeQrDesign()
-      ) {
-        throw new ForbiddenException(
-          `Custom QR design is not available on plan ${strategy.tierName}`,
-        );
-      }
-      link.qrConfig = { ...link.qrConfig, ...dto.qrConfig };
-    }
+    await this.applyAndValidateLinkUpdates(link, dto, user.sub, strategy);
+    const updatedLink = await this.linkRepository.save(link);
 
-    if (dto.isActive !== undefined) {
-      if (dto.isActive && !link.isActive) {
-        const maxActiveLinks = strategy.getMaxActiveLinks();
-        if (Number.isFinite(maxActiveLinks)) {
-          const activeUserLinks = await this.linksRepository.count({
-            where: { userId: user.sub, isActive: true },
-          });
-          if (activeUserLinks >= maxActiveLinks) {
-            throw new ForbiddenException(
-              `Maximum active links quota (${maxActiveLinks}) reached for plan ${strategy.tierName}`,
-            );
-          }
-        }
-      }
-      link.isActive = dto.isActive;
-    }
-
-    if (dto.name !== undefined) {
-      link.name = dto.name ? dto.name.trim() : null;
-    }
-
-    if (dto.targetUrl !== undefined) {
-      link.targetUrl = dto.targetUrl;
-    }
-
-    const updatedLink = await this.linksRepository.save(link);
-
-    // Invalidación reactiva obligatoria: DEL r:{shortCode}
-    await this.cacheService.invalidateRedirectTarget(updatedLink.shortCode);
-
+    await this.invalidateRedirectCache(updatedLink.shortCode);
     return updatedLink;
   }
 
   /**
-   * Elimina el enlace de PostgreSQL e invalida inmediatamente `DEL r:{shortCode}` en Redis.
+   * **Orquestador de Eliminación de Enlace (`DELETE /links/:id`):**
+   * 1. Verifica pertenencia y existencia del enlace.
+   * 2. Elimina el registro mediante el repositorio de dominio.
+   * 3. Invalida reactivamente su entrada en Redis (`DEL r:{shortCode}`).
    */
   async deleteLink(userId: string, linkId: string): Promise<void> {
     const link = await this.findOneByUser(userId, linkId);
-    const { shortCode } = link;
-
-    await this.linksRepository.remove(link);
-
-    // Invalidación reactiva obligatoria: DEL r:{shortCode}
-    await this.cacheService.invalidateRedirectTarget(shortCode);
+    await this.linkRepository.remove(link);
+    await this.invalidateRedirectCache(link.shortCode);
   }
 
   /**
-   * Renderiza bajo demanda el código QR dinámico apuntando a `{APP_BASE_URL}/{shortCode}`
-   * aplicando los parámetros almacenados en `qrConfig`.
+   * **Orquestador de Renderizado de Código QR Dinámico (`GET /links/:id/qr`):**
+   * 1. Recupera el enlace verificando propiedad.
+   * 2. Construye la URL pública corta a codificar.
+   * 3. Determina el formato de salida (`png` o `svg`) y normaliza las opciones visuales.
+   * 4. Renderiza el artefacto gráfico correspondiente.
    */
   async generateQrCode(
     userId: string,
@@ -248,23 +188,281 @@ export class LinksService {
     formatOverride?: 'png' | 'svg',
   ): Promise<GeneratedQrResult> {
     const link = await this.findOneByUser(userId, linkId);
+    const shortUrl = this.buildPublicShortUrl(link.shortCode);
+    const format = this.resolveQrFormat(link.qrConfig, formatOverride);
+    const qrOptions = this.buildQrRenderOptions(link.qrConfig);
+
+    return this.renderQrByFormat(shortUrl, format, qrOptions);
+  }
+
+  /**
+   * **Orquestador del Fast-Path de Redirección (`GET /:shortCode`):**
+   * 1. Intenta resolver el destino directamente desde memoria RAM (`GET r:{shortCode}`).
+   * 2. En caso de *Cache Hit*, retorna inmediatamente el `targetUrl`.
+   * 3. En caso de *Cache Miss*, consulta el repositorio, verifica estado activo y repuebla Redis.
+   */
+  async resolveShortCodeForRedirect(
+    shortCode: string,
+  ): Promise<ResolvedRedirect> {
+    const cachedTarget = await this.cacheService.getRedirectTarget(shortCode);
+    if (cachedTarget) {
+      return { targetUrl: cachedTarget };
+    }
+
+    return this.resolveFromRepositoryAndWarmCache(shortCode);
+  }
+
+  /**
+   * **Orquestador de Registro Asíncrono de Métricas de Clic:**
+   * 1. Construye el payload del evento con IP anonimizada vía SHA-256.
+   * 2. Encola de forma no bloqueante (*fire-and-forget*) el evento en `queue:clicks`.
+   */
+  recordClickAsync(params: {
+    shortCode: string;
+    linkId?: string;
+    rawIp?: string;
+    userAgent?: string;
+    referer?: string;
+  }): void {
+    const payload = this.buildClickEventPayload(params);
+    this.dispatchClickEventToQueue(payload);
+  }
+
+  // ===========================================================================
+  // Funciones Auxiliares de Dominio (Single Responsibility Principle)
+  // ===========================================================================
+
+  /**
+   * Obtiene la estrategia de plan correspondiente al usuario.
+   */
+  private resolvePlanStrategy(planCode?: string): PlanStrategy {
+    return this.planContextService.getStrategy(planCode);
+  }
+
+  /**
+   * Ejecuta todas las validaciones de cuota y permisos de plan previas a crear un enlace.
+   */
+  private async enforceCreationQuotas(
+    userId: string,
+    strategy: PlanStrategy,
+    qrConfig?: QrConfig,
+  ): Promise<void> {
+    await this.assertTotalLinksQuota(userId, strategy);
+    await this.assertActiveLinksQuota(userId, strategy);
+    this.assertQrCustomizationAllowed(qrConfig, strategy);
+  }
+
+  /**
+   * Verifica que el usuario no haya superado el número total de enlaces permitidos por su plan.
+   */
+  private async assertTotalLinksQuota(
+    userId: string,
+    strategy: PlanStrategy,
+  ): Promise<void> {
+    const totalUserLinks = await this.linkRepository.countByUser(userId);
+    strategy.assertCanCreateLink(totalUserLinks);
+  }
+
+  /**
+   * Verifica que el usuario no supere el límite de enlaces activos simultáneos de su plan.
+   */
+  private async assertActiveLinksQuota(
+    userId: string,
+    strategy: PlanStrategy,
+  ): Promise<void> {
+    const maxActiveLinks = strategy.getMaxActiveLinks();
+    if (!Number.isFinite(maxActiveLinks)) {
+      return;
+    }
+
+    const activeUserLinks = await this.linkRepository.countActiveByUser(userId);
+    if (activeUserLinks >= maxActiveLinks) {
+      throw new ForbiddenException(
+        `Maximum active links quota (${maxActiveLinks}) reached for plan ${strategy.tierName}`,
+      );
+    }
+  }
+
+  /**
+   * Comprueba si el plan permite personalizar el diseño del código QR cuando se envían opciones.
+   */
+  private assertQrCustomizationAllowed(
+    qrConfig: QrConfig | undefined,
+    strategy: PlanStrategy,
+  ): void {
+    if (
+      qrConfig &&
+      Object.keys(qrConfig).length > 0 &&
+      !strategy.canCustomizeQrDesign()
+    ) {
+      throw new ForbiddenException(
+        `Custom QR design is not available on plan ${strategy.tierName}`,
+      );
+    }
+  }
+
+  /**
+   * Decide si validar un `shortCode` personalizado o generar uno aleatorio único.
+   */
+  private async resolveOrAllocateShortCode(
+    customShortCode?: string,
+  ): Promise<string> {
+    return customShortCode
+      ? this.validateCustomShortCode(customShortCode)
+      : this.generateUniqueShortCode();
+  }
+
+  /**
+   * Construye y guarda la nueva entidad `Link` a través del repositorio de dominio.
+   */
+  private async persistNewLink(
+    userId: string,
+    shortCode: string,
+    dto: CreateLinkDto,
+  ): Promise<Link> {
+    return this.linkRepository.createAndSave({
+      shortCode,
+      name: this.normalizeLinkName(dto.name),
+      targetUrl: dto.targetUrl,
+      isActive: true,
+      qrConfig: dto.qrConfig ?? {},
+      userId,
+    });
+  }
+
+  /**
+   * Normaliza el nombre de referencia opcional de un enlace.
+   */
+  private normalizeLinkName(name?: string | null): string | null {
+    if (!name) {
+      return null;
+    }
+    const trimmed = name.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  /**
+   * Precalienta la clave de redirección en Redis (`SET r:{shortCode} {targetUrl}`).
+   */
+  private async warmUpRedirectCache(
+    link: Pick<Link, 'shortCode' | 'targetUrl'>,
+  ): Promise<void> {
+    await this.cacheService.setRedirectTarget(link.shortCode, link.targetUrl);
+  }
+
+  /**
+   * Invalida reactivamente la clave de redirección en Redis (`DEL r:{shortCode}`).
+   */
+  private async invalidateRedirectCache(shortCode: string): Promise<void> {
+    await this.cacheService.invalidateRedirectTarget(shortCode);
+  }
+
+  /**
+   * Afirma que la entidad `Link` exista o lanza `NotFoundException`.
+   */
+  private assertLinkExists(link: Link | null): asserts link is Link {
+    if (!link) {
+      throw new NotFoundException('Link not found');
+    }
+  }
+
+  /**
+   * Valida y aplica cada campo modificado del DTO sobre la entidad de dominio `Link`.
+   */
+  private async applyAndValidateLinkUpdates(
+    link: Link,
+    dto: UpdateLinkDto,
+    userId: string,
+    strategy: PlanStrategy,
+  ): Promise<void> {
+    if (dto.qrConfig !== undefined) {
+      this.applyQrConfigUpdate(link, dto.qrConfig, strategy);
+    }
+
+    if (dto.isActive !== undefined) {
+      await this.applyActiveStatusUpdate(link, dto.isActive, userId, strategy);
+    }
+
+    if (dto.name !== undefined) {
+      link.name = this.normalizeLinkName(dto.name);
+    }
+
+    if (dto.targetUrl !== undefined) {
+      link.targetUrl = dto.targetUrl;
+    }
+  }
+
+  /**
+   * Valida permisos de diseño QR y fusiona la nueva configuración visual en el enlace.
+   */
+  private applyQrConfigUpdate(
+    link: Link,
+    qrConfig: QrConfig,
+    strategy: PlanStrategy,
+  ): void {
+    this.assertQrCustomizationAllowed(qrConfig, strategy);
+    link.qrConfig = { ...link.qrConfig, ...qrConfig };
+  }
+
+  /**
+   * Valida la cuota de enlaces activos al reactivar un enlace inactivo y actualiza su estado.
+   */
+  private async applyActiveStatusUpdate(
+    link: Link,
+    nextIsActive: boolean,
+    userId: string,
+    strategy: PlanStrategy,
+  ): Promise<void> {
+    if (nextIsActive && !link.isActive) {
+      await this.assertActiveLinksQuota(userId, strategy);
+    }
+    link.isActive = nextIsActive;
+  }
+
+  /**
+   * Construye la URL corta pública completa usando `APP_BASE_URL`.
+   */
+  private buildPublicShortUrl(shortCode: string): string {
     const baseUrl = this.configService
       .get<string>('APP_BASE_URL', 'http://localhost:3000')
       .replace(/\/$/, '');
-    const shortUrl = `${baseUrl}/${link.shortCode}`;
+    return `${baseUrl}/${shortCode}`;
+  }
 
-    const config = link.qrConfig ?? {};
-    const format = formatOverride ?? config.format ?? 'png';
-    const qrOptions = {
-      errorCorrectionLevel: config.errorCorrectionLevel ?? 'M',
-      margin: config.margin ?? 2,
-      width: config.width ?? 300,
+  /**
+   * Determina el formato final del código QR priorizando el query param sobre `qrConfig`.
+   */
+  private resolveQrFormat(
+    config?: QrConfig,
+    formatOverride?: 'png' | 'svg',
+  ): 'png' | 'svg' {
+    return formatOverride ?? config?.format ?? 'png';
+  }
+
+  /**
+   * Normaliza las opciones visuales y de corrección de errores para el motor QR.
+   */
+  private buildQrRenderOptions(config?: QrConfig): NormalizedQrRenderOptions {
+    const safeConfig = config ?? {};
+    return {
+      errorCorrectionLevel: safeConfig.errorCorrectionLevel ?? 'M',
+      margin: safeConfig.margin ?? 2,
+      width: safeConfig.width ?? 300,
       color: {
-        dark: config.foregroundColor ?? '#000000',
-        light: config.backgroundColor ?? '#FFFFFF',
+        dark: safeConfig.foregroundColor ?? '#000000',
+        light: safeConfig.backgroundColor ?? '#FFFFFF',
       },
-    } as const;
+    };
+  }
 
+  /**
+   * Ejecuta la generación vectorial (`svg`) o matricial (`png`) del código QR.
+   */
+  private async renderQrByFormat(
+    shortUrl: string,
+    format: 'png' | 'svg',
+    qrOptions: NormalizedQrRenderOptions,
+  ): Promise<GeneratedQrResult> {
     if (format === 'svg') {
       const svg = await QRCode.toString(shortUrl, {
         ...qrOptions,
@@ -288,29 +486,19 @@ export class LinksService {
   }
 
   /**
-   * Resuelve un `shortCode` para el Data Plane público:
-   * 1. Intenta lectura en RAM (`GET r:{shortCode}`).
-   * 2. En caso de *Cache Miss*, consulta PostgreSQL, valida `isActive === true` y puebla Redis.
-   *
-   * @throws {NotFoundException} Si el código no existe o el enlace está inactivo.
+   * Resuelve un *Cache Miss* consultando el repositorio, validando que esté activo
+   * y repoblando Redis para futuras peticiones.
    */
-  async resolveShortCodeForRedirect(
+  private async resolveFromRepositoryAndWarmCache(
     shortCode: string,
   ): Promise<ResolvedRedirect> {
-    const cachedTarget = await this.cacheService.getRedirectTarget(shortCode);
-    if (cachedTarget) {
-      return { targetUrl: cachedTarget };
-    }
-    const link = await this.linksRepository.findOne({
-      select: ['id', 'shortCode', 'targetUrl', 'isActive'],
-      where: { shortCode },
-    });
+    const link = await this.linkRepository.findByShortCodeForRedirect(shortCode);
 
     if (!link || !link.isActive) {
       throw new NotFoundException('Link not found');
     }
 
-    await this.cacheService.setRedirectTarget(link.shortCode, link.targetUrl);
+    await this.warmUpRedirectCache(link);
 
     return {
       targetUrl: link.targetUrl,
@@ -319,32 +507,34 @@ export class LinksService {
   }
 
   /**
-   * Encola de forma asíncrona (*fire-and-forget*) un evento de clic/escaneo en `queue:clicks`
-   * anonimizando previamente la IP mediante SHA-256 con sal para no penalizar la respuesta `302`.
+   * Construye el objeto de evento de clic con IP anonimizada y marca de tiempo ISO.
    */
-  recordClickAsync(params: {
+  private buildClickEventPayload(params: {
     shortCode: string;
     linkId?: string;
     rawIp?: string;
     userAgent?: string;
     referer?: string;
-  }): void {
-    const ipAddress = this.anonymizeIp(params.rawIp ?? '0.0.0.0');
+  }): ClickEventPayload {
+    return {
+      shortCode: params.shortCode,
+      linkId: params.linkId,
+      ipAddress: this.anonymizeIp(params.rawIp ?? '0.0.0.0'),
+      userAgent: params.userAgent ?? null,
+      referer: params.referer ?? null,
+      scannedAt: new Date().toISOString(),
+    };
+  }
 
-    void this.cacheService
-      .enqueueClickEvent({
-        shortCode: params.shortCode,
-        linkId: params.linkId,
-        ipAddress,
-        userAgent: params.userAgent ?? null,
-        referer: params.referer ?? null,
-        scannedAt: new Date().toISOString(),
-      })
-      .catch((error: unknown) => {
-        this.logger.warn(
-          `Failed to enqueue click event for ${params.shortCode}: ${(error as Error).message}`,
-        );
-      });
+  /**
+   * Encola el evento de clic en Redis de manera asíncrona registrando advertencias si falla.
+   */
+  private dispatchClickEventToQueue(payload: ClickEventPayload): void {
+    void this.cacheService.enqueueClickEvent(payload).catch((error: unknown) => {
+      this.logger.warn(
+        `Failed to enqueue click event for ${payload.shortCode}: ${(error as Error).message}`,
+      );
+    });
   }
 
   /**
@@ -365,14 +555,11 @@ export class LinksService {
    * Valida que un `shortCode` personalizado no colisione con rutas reservadas ni con enlaces existentes.
    */
   private async validateCustomShortCode(shortCode: string): Promise<string> {
-    if (RESERVED_SLUGS.has(shortCode.toLowerCase())) {
+    if (this.isReservedSlug(shortCode)) {
       throw new BadRequestException('This shortCode is reserved');
     }
 
-    const exists = await this.linksRepository.exists({
-      where: { shortCode },
-    });
-
+    const exists = await this.linkRepository.existsByShortCode(shortCode);
     if (exists) {
       throw new ConflictException('shortCode is already in use');
     }
@@ -386,14 +573,11 @@ export class LinksService {
   private async generateUniqueShortCode(): Promise<string> {
     for (let attempt = 0; attempt < MAX_COLLISION_RETRIES; attempt++) {
       const candidate = this.generateRandomBase62(DEFAULT_SHORT_CODE_LENGTH);
-      if (RESERVED_SLUGS.has(candidate.toLowerCase())) {
+      if (this.isReservedSlug(candidate)) {
         continue;
       }
 
-      const exists = await this.linksRepository.exists({
-        where: { shortCode: candidate },
-      });
-
+      const exists = await this.linkRepository.existsByShortCode(candidate);
       if (!exists) {
         return candidate;
       }
@@ -404,6 +588,16 @@ export class LinksService {
     );
   }
 
+  /**
+   * Comprueba si un candidato coincide con una palabra reservada del sistema.
+   */
+  private isReservedSlug(slug: string): boolean {
+    return RESERVED_SLUGS.has(slug.toLowerCase());
+  }
+
+  /**
+   * Genera una cadena aleatoria Base62 de la longitud indicada.
+   */
   private generateRandomBase62(length: number): string {
     let result = '';
     for (let i = 0; i < length; i++) {

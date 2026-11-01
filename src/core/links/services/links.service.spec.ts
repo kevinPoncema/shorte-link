@@ -15,10 +15,13 @@ import { CacheService } from '../../cache/cache.service';
 import { Link } from '../../models/link.entity';
 import { LinksController } from '../controllers/links.controller';
 import { RedirectController } from '../controllers/redirect.controller';
+import { ILinkRepository } from '../interfaces/link-repository.interface';
+import { TypeOrmLinkRepository } from '../repositories/typeorm-link.repository';
 import { LinksService } from './links.service';
 
-describe('LinksService, LinksController & RedirectController', () => {
+describe('LinksService, TypeOrmLinkRepository, LinksController & RedirectController', () => {
   let linksService: LinksService;
+  let linkRepository: ILinkRepository;
   let linksController: LinksController;
   let redirectController: RedirectController;
   let planContextService: PlanContextService;
@@ -121,8 +124,10 @@ describe('LinksService, LinksController & RedirectController', () => {
       IP_HASH_SALT: 'test-salt',
     });
 
+    linkRepository = new TypeOrmLinkRepository(linksRepoMock as never);
+
     linksService = new LinksService(
-      linksRepoMock as never,
+      linkRepository,
       planContextService,
       cacheServiceMock as unknown as CacheService,
       configService,

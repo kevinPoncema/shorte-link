@@ -6,17 +6,23 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { IPlanRepository } from '../../../plans/interfaces/plan-repository.interface';
 import { Plan } from '../../../plans/models/plan.entity';
+import { TypeOrmPlanRepository } from '../../../plans/repositories/typeorm-plan.repository';
 import { User } from '../../models/user.entity';
 import { AuthController } from '../controllers/auth.controller';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { IUserRepository } from '../interfaces/user-repository.interface';
+import { TypeOrmUserRepository } from '../repositories/typeorm-user.repository';
 import { AuthService, DEFAULT_PLAN_ID } from './auth.service';
 
-describe('AuthService, AuthController & JwtAuthGuard', () => {
+describe('AuthService, Repositories, AuthController & JwtAuthGuard', () => {
   const jwtSecret = 'unit-test-secret';
   let jwtService: JwtService;
   let configService: ConfigService;
+  let userRepository: IUserRepository;
+  let planRepository: IPlanRepository;
   let authService: AuthService;
   let authController: AuthController;
   let guard: JwtAuthGuard;
@@ -39,7 +45,7 @@ describe('AuthService, AuthController & JwtAuthGuard', () => {
       BCRYPT_SALT_ROUNDS: 4,
     });
 
-    const usersRepositoryMock = {
+    const ormUsersRepositoryMock = {
       findOne: jest.fn(async ({ where }: { where: { email: string } }) =>
         storedUsers.find((u) => u.email === where.email) ?? null,
       ),
@@ -74,7 +80,7 @@ describe('AuthService, AuthController & JwtAuthGuard', () => {
       return plan;
     });
 
-    const plansRepositoryMock = {
+    const ormPlansRepositoryMock = {
       findOne: jest.fn(async ({ where }: { where: { id: string } }) =>
         storedPlans.find((p) => p.id === where.id) ?? null,
       ),
@@ -82,9 +88,16 @@ describe('AuthService, AuthController & JwtAuthGuard', () => {
       save: plansRepoSaveMock,
     };
 
+    userRepository = new TypeOrmUserRepository(
+      ormUsersRepositoryMock as never,
+    );
+    planRepository = new TypeOrmPlanRepository(
+      ormPlansRepositoryMock as never,
+    );
+
     authService = new AuthService(
-      usersRepositoryMock as never,
-      plansRepositoryMock as never,
+      userRepository,
+      planRepository,
       jwtService,
       configService,
     );
@@ -186,7 +199,10 @@ describe('AuthService, AuthController & JwtAuthGuard', () => {
 
   describe('JwtAuthGuard (Happy, Sad & Edge Cases)', () => {
     const buildContext = (authHeader?: string) => {
-      const req: { headers: Record<string, string | undefined>; user?: JwtPayload } = {
+      const req: {
+        headers: Record<string, string | undefined>;
+        user?: JwtPayload;
+      } = {
         headers: authHeader !== undefined ? { authorization: authHeader } : {},
       };
       const ctx = {
