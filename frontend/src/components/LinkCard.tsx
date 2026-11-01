@@ -11,6 +11,7 @@ import {
   Edit3,
   Tag,
   Link2,
+  BarChart3,
 } from 'lucide-react';
 
 interface LinkCardProps {
@@ -18,6 +19,7 @@ interface LinkCardProps {
   onEdit: (link: LinkItem) => void;
   onDelete: (id: string) => void;
   onOpenModal: (link: LinkItem) => void;
+  onOpenStats: (link: LinkItem) => void;
 }
 
 export const LinkCard: React.FC<LinkCardProps> = ({
@@ -25,6 +27,7 @@ export const LinkCard: React.FC<LinkCardProps> = ({
   onEdit,
   onDelete,
   onOpenModal,
+  onOpenStats,
 }) => {
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -182,6 +185,16 @@ export const LinkCard: React.FC<LinkCardProps> = ({
           <ExternalLink className="h-3.5 w-3.5" />
           <span>Probar</span>
         </a>
+
+        {/* Botón Estadísticas / Métricas */}
+        <button
+          onClick={() => onOpenStats(link)}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none"
+          title="Ver estadísticas en tiempo real, KPIs y desgloses"
+        >
+          <BarChart3 className="h-3.5 w-3.5 text-indigo-600" />
+          <span>Métricas</span>
+        </button>
 
         {/* Botón Editar parámetros / destino */}
         <button

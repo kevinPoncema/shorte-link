@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { api, LinkItem } from '../services/api';
+import { api, LinkItem, User } from '../services/api';
 import { CreateLinkForm } from '../components/CreateLinkForm';
 import { LinkCard } from '../components/LinkCard';
 import { QrPreviewModal } from '../components/QrPreviewModal';
 import { EditLinkModal } from '../components/EditLinkModal';
+import { LinkStatsModal } from '../components/LinkStatsModal';
 import { RefreshCw, Link as LinkIcon, AlertCircle } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
   const [links, setLinks] = useState<LinkItem[]>([]);
+  const [currentUser] = useState<User | null>(() => api.getCurrentUser());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedLinkForQr, setSelectedLinkForQr] = useState<LinkItem | null>(null);
   const [selectedLinkForEdit, setSelectedLinkForEdit] = useState<LinkItem | null>(null);
+  const [selectedLinkForStats, setSelectedLinkForStats] = useState<LinkItem | null>(null);
 
   const fetchLinks = async () => {
     setLoading(true);
@@ -105,6 +108,7 @@ export const DashboardPage: React.FC = () => {
                 onEdit={(item) => setSelectedLinkForEdit(item)}
                 onDelete={handleLinkDeleted}
                 onOpenModal={(item) => setSelectedLinkForQr(item)}
+                onOpenStats={(item) => setSelectedLinkForStats(item)}
               />
             ))}
           </div>
@@ -122,6 +126,13 @@ export const DashboardPage: React.FC = () => {
         link={selectedLinkForEdit}
         onClose={() => setSelectedLinkForEdit(null)}
         onLinkUpdated={handleLinkUpdated}
+      />
+
+      {/* Modal para estadísticas y analíticas de tráfico */}
+      <LinkStatsModal
+        link={selectedLinkForStats}
+        currentUser={currentUser}
+        onClose={() => setSelectedLinkForStats(null)}
       />
     </main>
   );

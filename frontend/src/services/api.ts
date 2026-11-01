@@ -38,6 +38,52 @@ export interface ApiError {
   error?: string;
 }
 
+export interface StatsSummary {
+  totalClicks: number;
+  uniqueVisitors: number;
+  topCountry: string | null;
+  topDevice: string | null;
+}
+
+export interface TimelinePoint {
+  date: string;
+  clicks: number;
+}
+
+export interface NamedBreakdownItem {
+  name: string;
+  count: number;
+  percentage: number;
+}
+
+export interface CountryBreakdownItem {
+  code: string;
+  name: string;
+  count: number;
+  percentage: number;
+}
+
+export interface ReferrerBreakdownItem {
+  source: string;
+  count: number;
+  percentage: number;
+}
+
+export interface StatsBreakdowns {
+  os: NamedBreakdownItem[];
+  browsers: NamedBreakdownItem[];
+  countries: CountryBreakdownItem[];
+  referrers: ReferrerBreakdownItem[];
+}
+
+export interface LinkStatsResponse {
+  linkId: string;
+  period: string;
+  summary: StatsSummary;
+  timeline: TimelinePoint[];
+  breakdowns: StatsBreakdowns;
+}
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
@@ -181,6 +227,12 @@ class ApiService {
     await this.request<void>(`/links/${id}`, {
       method: 'DELETE',
     });
+  }
+
+  // --- Statistics endpoints ---
+  async getLinkStats(linkId: string, period?: string): Promise<LinkStatsResponse> {
+    const query = period ? `?period=${encodeURIComponent(period)}` : '';
+    return this.request<LinkStatsResponse>(`/links/${linkId}/stats${query}`);
   }
 }
 
