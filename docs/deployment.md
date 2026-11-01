@@ -54,6 +54,9 @@ docker compose up -d --build
 5. **Worker de Analíticas (`AnalyticsWorkerService`):**
    - Ejecuta cada 15 segundos (`ANALYTICS_WORKER_INTERVAL_MS=15000`) extrayendo lotes de hasta 200 eventos (`ANALYTICS_WORKER_BATCH_SIZE=200`), liberando RAM en Redis y realizando *Bulk Insert* en PostgreSQL.
    - Viene integrado por defecto en la imagen `api`. En arquitecturas a gran escala, puede deshabilitarse en las instancias web (`ANALYTICS_WORKER_ENABLED=false`) y asignarse a un contenedor dedicado.
+6. **Pasarela Stripe, Webhooks HMAC y Feature Flag de Pedidos Físicos:**
+   - Fastify se inicializa con `{ rawBody: true }` en `src/main.ts` para verificar criptográficamente `POST /billing/webhook` usando `STRIPE_WEBHOOK_SECRET`.
+   - `docker-compose.yml` propaga `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, `ENABLE_PHYSICAL_ORDERS` (booleano `true` por defecto) y los precios unitarios de hardware (`PRICE_ACRYLIC_STAND`, `PRICE_PLASTIC_CARD`, `PRICE_NFC_CARD`, `PRICE_NFC_STICKER`) hacia el contenedor `api`.
 
 ---
 
@@ -62,5 +65,7 @@ docker compose up -d --build
 - [ ] `NODE_ENV=production` y `DB_SYNCHRONIZE=false`.
 - [ ] `APP_BASE_URL` apuntando al dominio corto definitivo con `https://`.
 - [ ] `JWT_SECRET` e `IP_HASH_SALT` rotados con secretos criptográficos únicos.
+- [ ] `STRIPE_SECRET_KEY` (`sk_live_...`), `STRIPE_WEBHOOK_SECRET` (`whsec_...`) y `STRIPE_PRO_PRICE_ID` (`price_...`) configurados con credenciales reales de Stripe.
+- [ ] `ENABLE_PHYSICAL_ORDERS` establecido en `true` o `false` según disponibilidad de inventario/manufactura NFC.
 - [ ] `SWAGGER_ENABLED=false` si la documentación no debe ser pública.
 - [ ] Redis configurado con `maxmemory` definido y política `allkeys-lru`.

@@ -71,7 +71,32 @@ La configuración se carga globalmente mediante `@nestjs/config` desde variables
 
 ---
 
-## 7. Perfil Recomendado por Entorno
+## 7. Facturación SaaS, Stripe y Pedidos Físicos (`BillingModule`)
+
+| Variable | Default | Descripción |
+| :--- | :--- | :--- |
+| `STRIPE_SECRET_KEY` | `sk_test_placeholder` | Clave secreta de Stripe (`sk_test_...` o `sk_live_...`). Si en desarrollo contiene un placeholder de pruebas, el backend habilita fallback seguro de simulación local. |
+| `STRIPE_WEBHOOK_SECRET` | *(vacío)* | Secreto de firma HMAC (`whsec_...`) para validar `POST /billing/webhook` sobre `req.rawBody`. |
+| `STRIPE_PRO_PRICE_ID` | *(configurado en `.env`)* | ID del precio recurrente mensual del Plan PRO en Stripe (`price_...`) usado cuando el cliente no envía `priceId` explícito. |
+| `ENABLE_PHYSICAL_ORDERS` | `true` | **Feature Flag booleano** (`true` / `false`) que activa o desactiva el módulo de pedidos físicos de tarjetas/acrílicos QR + NFC. También puede conmutarse dinámicamente vía `PATCH /billing/config/physical-orders`. |
+| `PRICE_ACRYLIC_STAND` | `15.00` | Precio unitario (USD) para expositor acrílico QR + NFC (`acrylic_stand`). |
+| `PRICE_PLASTIC_CARD` | `10.00` | Precio unitario (USD) para tarjeta PVC impresa QR + NFC (`plastic_card`). |
+| `PRICE_NFC_CARD` | `12.50` | Precio unitario (USD) para tarjeta inteligente NFC empresarial (`nfc_card`). |
+| `PRICE_NFC_STICKER` | `5.00` | Precio unitario (USD) para etiqueta adhesiva NFC (`nfc_sticker`). |
+
+---
+
+## 8. Frontend (`React + Vite`)
+
+| Variable | Default | Descripción |
+| :--- | :--- | :--- |
+| `FRONTEND_PORT` | `5173` | Puerto expuesto en el host por el contenedor Nginx del frontend. |
+| `VITE_API_BASE_URL` | `http://localhost:3000` | URL base del backend consumida por el cliente HTTP de la SPA. |
+| `VITE_STRIPE_PRO_PRICE_ID` | *(opcional)* | Sobrescribe desde el cliente el `priceId` enviado a `POST /billing/checkout/subscription` (si se omite, el backend usa `STRIPE_PRO_PRICE_ID`). |
+
+---
+
+## 9. Perfil Recomendado por Entorno
 
 | Parámetro | Desarrollo | Producción |
 | :--- | :--- | :--- |
@@ -79,3 +104,5 @@ La configuración se carga globalmente mediante `@nestjs/config` desde variables
 | `SWAGGER_ENABLED` | `true` | `false` *(o protegido por red interna)* |
 | `BCRYPT_SALT_ROUNDS` | `10` | `10` – `12` |
 | `JWT_SECRET` / `IP_HASH_SALT` | Valores locales | Secretos aleatorios de alta entropía |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Claves `sk_test_...` / simulación | Claves reales `sk_live_...` y `whsec_...` |
+| `ENABLE_PHYSICAL_ORDERS` | `true` (`boolean`) | `true` o `false` según disponibilidad logística |
