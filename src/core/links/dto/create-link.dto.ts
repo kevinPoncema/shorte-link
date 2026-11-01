@@ -13,6 +13,15 @@ import { QrConfigDto } from './qr-config.dto';
  * Payload de entrada para crear un nuevo enlace corto y su configuración QR (`POST /links`).
  */
 export class CreateLinkDto {
+  @ApiPropertyOptional({
+    description: 'Nombre o etiqueta de referencia para identificar el enlace',
+    example: 'Campaña Black Friday 2026',
+    maxLength: 150,
+  })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
   @ApiProperty({
     description: 'URL absoluta de destino original (requiere esquema http o https)',
     format: 'uri',

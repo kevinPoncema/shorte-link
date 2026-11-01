@@ -5,28 +5,29 @@ import {
   Copy,
   Check,
   ExternalLink,
-  PowerOff,
-  Power,
   Trash2,
   Maximize2,
   Clock,
+  Edit3,
+  Tag,
+  Link2,
 } from 'lucide-react';
 
 interface LinkCardProps {
   link: LinkItem;
-  onUpdate: (updated: LinkItem) => void;
+  onEdit: (link: LinkItem) => void;
   onDelete: (id: string) => void;
   onOpenModal: (link: LinkItem) => void;
 }
 
 export const LinkCard: React.FC<LinkCardProps> = ({
   link,
-  onUpdate,
+  onEdit,
   onDelete,
   onOpenModal,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [loadingAction, setLoadingAction] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const shortUrl = `${API_BASE_URL}/${link.shortCode}`;
   const fgColor = link.qrConfig?.foregroundColor || '#000000';
@@ -38,33 +39,17 @@ export const LinkCard: React.FC<LinkCardProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleToggleActive = async () => {
-    setLoadingAction(true);
-    try {
-      // Al actualizar isActive, el backend ejecuta invalidación reactiva: DEL r:{shortCode}
-      const updated = await api.updateLink(link.id, {
-        isActive: !link.isActive,
-      });
-      onUpdate(updated);
-    } catch (err: unknown) {
-      alert((err as { message?: string })?.message || 'Error al actualizar enlace');
-    } finally {
-      setLoadingAction(false);
-    }
-  };
-
   const handleDelete = async () => {
-    if (!confirm(`¿Eliminar enlace /${link.shortCode}? Se invalidará inmediatamente de Redis.`)) {
+    if (!confirm(`¿Eliminar el enlace "${link.name || shortUrl}"? Se borrará de la base de datos y se invalidará automáticamente de Redis.`)) {
       return;
     }
-    setLoadingAction(true);
+    setDeleting(true);
     try {
       await api.deleteLink(link.id);
       onDelete(link.id);
     } catch (err: unknown) {
       alert((err as { message?: string })?.message || 'Error al eliminar');
-    } finally {
-      setLoadingAction(false);
+      setDeleting(false);
     }
   };
 
@@ -77,15 +62,15 @@ export const LinkCard: React.FC<LinkCardProps> = ({
 
   return (
     <div
-      className={`group relative flex flex-col justify-between rounded-xl border bg-white p-5 transition-all sm:flex-row sm:items-center ${
+      className={`group relative flex flex-col justify-between rounded-xl border bg-white p-5 transition-all lg:flex-row lg:items-center ${
         link.isActive
           ? 'border-slate-200/90 shadow-sm hover:border-slate-300'
-          : 'border-slate-200 bg-slate-50/60 opacity-80'
+          : 'border-slate-200 bg-slate-50/60 opacity-75'
       }`}
     >
-      {/* Left side: QR preview + Link info */}
+      {/* Lado izquierdo: QR + Enlace acortado + Destino original + Nombre */}
       <div className="flex items-start gap-4">
-        {/* Compact QR Preview with click to open full preview */}
+        {/* Previsualización QR clicable para ampliar */}
         <div
           onClick={() => onOpenModal(link)}
           className="relative cursor-pointer shrink-0 rounded-lg border border-slate-100 p-2 shadow-xs transition hover:scale-105"
@@ -104,14 +89,18 @@ export const LinkCard: React.FC<LinkCardProps> = ({
           </div>
         </div>
 
-        {/* Details */}
+        {/* Información del enlace (solo link acortado, nombre y original) */}
         <div className="min-w-0 flex-1">
+          {/* Nombre de referencia o etiqueta */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-base font-bold text-slate-900">
-              /{link.shortCode}
-            </span>
+            <div className="flex items-center gap-1.5 font-semibold text-slate-900 text-sm">
+              <Tag className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+              <span className="truncate">
+                {link.name ? link.name : 'Enlace sin nombre de referencia'}
+              </span>
+            </div>
 
-            {/* Status indicator badge */}
+            {/* Estado activo/inactivo */}
             <span
               className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                 link.isActive
@@ -123,42 +112,49 @@ export const LinkCard: React.FC<LinkCardProps> = ({
             </span>
           </div>
 
-          {/* Short URL with copy */}
-          <div className="mt-1 flex items-center gap-2">
+          {/* Enlace acortado completo */}
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="text-[11px] font-medium text-slate-400">Corto:</span>
             <a
               href={shortUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="truncate font-mono text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
-              title="Abrir endpoint de redirección rápida"
+              className="truncate font-mono text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline"
+              title="Abrir enlace acortado"
             >
               {shortUrl}
             </a>
           </div>
 
-          {/* Target URL */}
-          <p
-            className="mt-1 truncate text-xs text-slate-500"
-            title={link.targetUrl}
-          >
-            Destino: <span className="font-medium text-slate-700">{link.targetUrl}</span>
-          </p>
+          {/* Enlace original al que redirige */}
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="text-[11px] font-medium text-slate-400 shrink-0 flex items-center gap-0.5">
+              <Link2 className="h-3 w-3" />
+              Destino:
+            </span>
+            <p
+              className="truncate text-xs text-slate-700 font-medium"
+              title={link.targetUrl}
+            >
+              {link.targetUrl}
+            </p>
+          </div>
 
-          {/* Date info */}
+          {/* Fecha de creación */}
           <div className="mt-2 flex items-center gap-1 text-[11px] text-slate-400">
             <Clock className="h-3 w-3" />
-            <span>{formattedDate}</span>
+            <span>Creado el {formattedDate}</span>
           </div>
         </div>
       </div>
 
-      {/* Right side: Action buttons */}
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 sm:mt-0 sm:flex-nowrap sm:border-0 sm:pt-0">
+      {/* Lado derecho: Acciones */}
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 lg:mt-0 lg:flex-nowrap lg:border-0 lg:pt-0">
         {/* Botón Copiar */}
         <button
           onClick={handleCopy}
           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none"
-          title="Copiar URL corta"
+          title="Copiar enlace acortado"
         >
           {copied ? (
             <>
@@ -173,50 +169,32 @@ export const LinkCard: React.FC<LinkCardProps> = ({
           )}
         </button>
 
-        {/* Botón Probar Redirección (abre en pestaña nueva) */}
+        {/* Botón Probar Redirección */}
         <a
           href={shortUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100/60 focus:outline-none"
-          title="Probar redirección HTTP 302 y cache Redis"
+          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/60 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 focus:outline-none"
+          title="Probar redirección rápida y caché"
         >
           <ExternalLink className="h-3.5 w-3.5" />
           <span>Probar</span>
         </a>
 
-        {/* Botón Invalidar / Desactivar (reactivo DEL r:{shortCode}) */}
+        {/* Botón Editar parámetros / destino */}
         <button
-          onClick={handleToggleActive}
-          disabled={loadingAction}
-          className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition focus:outline-none ${
-            link.isActive
-              ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-              : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-          }`}
-          title={
-            link.isActive
-              ? 'Desactivar enlace e invalidar caché (DEL r:{shortCode})'
-              : 'Reactivar enlace y precargar en caché'
-          }
+          onClick={() => onEdit(link)}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none"
+          title="Editar nombre, URL de destino o colores (invalida en Redis automáticamente)"
         >
-          {link.isActive ? (
-            <>
-              <PowerOff className="h-3.5 w-3.5" />
-              <span>Invalidar</span>
-            </>
-          ) : (
-            <>
-              <Power className="h-3.5 w-3.5" />
-              <span>Reactivar</span>
-            </>
-          )}
+          <Edit3 className="h-3.5 w-3.5 text-slate-600" />
+          <span>Editar</span>
         </button>
 
         {/* Botón Eliminar */}
         <button
           onClick={handleDelete}
-          disabled={loadingAction}
+          disabled={deleting}
           className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 focus:outline-none"
           title="Eliminar enlace"
         >

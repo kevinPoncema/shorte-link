@@ -1,4 +1,4 @@
-import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
+import { ApiHideProperty, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Column,
   CreateDateColumn,
@@ -60,6 +60,19 @@ export class Link {
     nullable: false,
   })
   shortCode: string;
+
+  /**
+   * Nombre o etiqueta de referencia para identificar el enlace en el dashboard.
+   */
+  @ApiPropertyOptional({
+    description: 'Nombre descriptivo o de referencia para identificar el enlace',
+    example: 'Campaña Black Friday 2026',
+    maxLength: 150,
+    nullable: true,
+    type: String,
+  })
+  @Column({ name: 'name', type: 'varchar', length: 150, nullable: true })
+  name: string | null;
 
   /**
    * URL original de destino hacia la que redirige el Fast-Path con `HTTP 302 Found`.

@@ -31,6 +31,7 @@ classDiagram
     <<entity>>
     +UUID id
     +String shortCode
+    +String name
     +String targetUrl
     +Boolean isActive
     +QrConfig qrConfig
@@ -110,6 +111,7 @@ erDiagram
   LINKS {
     uuid id PK "UUID v4"
     varchar short_code UK "varchar(16) Base62"
+    varchar name "varchar(150) nullable (nombre referencia)"
     text target_url "NOT NULL"
     boolean is_active "default true"
     jsonb qr_config "default {}"

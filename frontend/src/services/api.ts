@@ -16,6 +16,7 @@ export interface QrConfig {
 
 export interface LinkItem {
   id: string;
+  name?: string | null;
   shortCode: string;
   targetUrl: string;
   isActive: boolean;
@@ -135,7 +136,7 @@ class ApiService {
 
   async createLink(payload: {
     targetUrl: string;
-    shortCode?: string;
+    name?: string;
     qrConfig?: QrConfig;
   }): Promise<LinkItem> {
     return this.request<LinkItem>('/links', {
@@ -146,7 +147,12 @@ class ApiService {
 
   async updateLink(
     id: string,
-    payload: { targetUrl?: string; isActive?: boolean; qrConfig?: QrConfig }
+    payload: {
+      name?: string;
+      targetUrl?: string;
+      isActive?: boolean;
+      qrConfig?: QrConfig;
+    }
   ): Promise<LinkItem> {
     return this.request<LinkItem>(`/links/${id}`, {
       method: 'PATCH',

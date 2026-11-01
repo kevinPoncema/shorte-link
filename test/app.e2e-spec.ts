@@ -393,6 +393,7 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
       url: '/links',
       headers: { authorization: `Bearer ${tokenA}` },
       payload: {
+        name: 'Docs NestJS Rendimiento',
         targetUrl: 'https://docs.nestjs.com/techniques/performance',
         shortCode: 'NestFast',
         qrConfig: {
@@ -518,11 +519,16 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
       method: 'PATCH',
       url: `/links/${linkId}`,
       headers: { authorization: `Bearer ${tokenA}` },
-      payload: { targetUrl: 'https://fastify.dev/docs/latest' },
+      payload: {
+        name: 'Docs Fastify Actualizado',
+        targetUrl: 'https://fastify.dev/docs/latest',
+      },
     });
     expect(updateRes.statusCode).toBe(200);
+    expect(updateRes.json().name).toBe('Docs Fastify Actualizado');
     expect(redisKV.has(`r:${shortCode}`)).toBe(false);
 
+    // Cache Miss repopulates Redis
     const redirectMissRes = await app.inject({
       method: 'GET',
       url: `/${shortCode}`,

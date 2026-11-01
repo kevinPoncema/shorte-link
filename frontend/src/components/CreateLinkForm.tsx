@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { api, ApiError, LinkItem } from '../services/api';
-import { Plus, Link2, AlertCircle, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Link2, AlertCircle, Sparkles, ChevronDown, ChevronUp, Tag } from 'lucide-react';
 
 interface CreateLinkFormProps {
   onLinkCreated: (newLink: LinkItem) => void;
 }
 
 export const CreateLinkForm: React.FC<CreateLinkFormProps> = ({ onLinkCreated }) => {
+  const [name, setName] = useState('');
   const [targetUrl, setTargetUrl] = useState('');
-  const [shortCode, setShortCode] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [qrColor, setQrColor] = useState('#000000');
   const [qrBgColor, setQrBgColor] = useState('#FFFFFF');
@@ -25,14 +25,14 @@ export const CreateLinkForm: React.FC<CreateLinkFormProps> = ({ onLinkCreated })
     try {
       const payload: {
         targetUrl: string;
-        shortCode?: string;
+        name?: string;
         qrConfig?: { foregroundColor?: string; backgroundColor?: string };
       } = {
         targetUrl: targetUrl.trim(),
       };
 
-      if (shortCode.trim()) {
-        payload.shortCode = shortCode.trim();
+      if (name.trim()) {
+        payload.name = name.trim();
       }
 
       if (qrColor !== '#000000' || qrBgColor !== '#FFFFFF') {
@@ -42,10 +42,11 @@ export const CreateLinkForm: React.FC<CreateLinkFormProps> = ({ onLinkCreated })
         };
       }
 
+      // El shortCode se genera estrictamente en el backend
       const created = await api.createLink(payload);
       onLinkCreated(created);
+      setName('');
       setTargetUrl('');
-      setShortCode('');
       setShowAdvanced(false);
     } catch (err: unknown) {
       const apiErr = err as ApiError;
@@ -62,15 +63,13 @@ export const CreateLinkForm: React.FC<CreateLinkFormProps> = ({ onLinkCreated })
 
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900">
-            Generar Enlace Corto & QR Dinámico
-          </h2>
-          <p className="text-xs text-slate-500">
-            Ingresa tu URL de destino para resolución en milisegundos vía Redis.
-          </p>
-        </div>
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-slate-900">
+          Crear Enlace Corto & QR Dinámico
+        </h2>
+        <p className="text-xs text-slate-500">
+          El backend generará automáticamente el enlace acortado único para redirección en RAM.
+        </p>
       </div>
 
       {errorMessage && (
@@ -80,104 +79,115 @@ export const CreateLinkForm: React.FC<CreateLinkFormProps> = ({ onLinkCreated })
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Main URL Input */}
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <div className="relative flex-1">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-              <Link2 className="h-4 w-4" />
+      <form onSubmit={handleSubmit} className="space-y-3.5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* Nombre de referencia */}
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Nombre de referencia (opcional)
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                <Tag className="h-4 w-4" />
+              </div>
+              <input
+                type="text"
+                placeholder="ej. Campaña Instagram, Menú Restaurante..."
+                maxLength={150}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
             </div>
-            <input
-              type="url"
-              required
-              placeholder="https://tu-sitio-web.com/campaña-larga"
-              value={targetUrl}
-              onChange={(e) => setTargetUrl(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            />
           </div>
+
+          {/* URL original de destino */}
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              URL de destino (a la que redirige) *
+            </label>
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                <Link2 className="h-4 w-4" />
+              </div>
+              <input
+                type="url"
+                required
+                placeholder="https://tu-sitio-web.com/pagina-larga"
+                value={targetUrl}
+                onChange={(e) => setTargetUrl(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Botón de acción y Opciones de diseño */}
+        <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+            <span>Personalizar colores del código QR</span>
+            {showAdvanced ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
+          </button>
 
           <button
             type="submit"
             disabled={loading || !targetUrl.trim()}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? (
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
             ) : (
               <>
                 <Plus className="h-4 w-4" />
-                <span>Generar</span>
+                <span>Generar Enlace</span>
               </>
             )}
           </button>
         </div>
 
-        {/* Toggle Opciones Avanzadas */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800"
-          >
-            <Sparkles className="h-3 w-3 text-indigo-500" />
-            <span>Opciones avanzadas (Slug & Diseño QR)</span>
-            {showAdvanced ? (
-              <ChevronUp className="h-3 w-3" />
-            ) : (
-              <ChevronDown className="h-3 w-3" />
-            )}
-          </button>
-
-          {showAdvanced && (
-            <div className="mt-3 grid grid-cols-1 gap-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3.5 sm:grid-cols-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-600">
-                  Slug personalizado (opcional)
-                </label>
+        {/* Desplegable de colores QR */}
+        {showAdvanced && (
+          <div className="grid grid-cols-2 gap-4 rounded-lg border border-slate-100 bg-slate-50/80 p-3.5 max-w-sm">
+            <div>
+              <label className="block text-xs font-medium text-slate-600">
+                Color QR
+              </label>
+              <div className="mt-1.5 flex items-center gap-2">
                 <input
-                  type="text"
-                  placeholder="ej. promo2026"
-                  pattern="[A-Za-z0-9]{6,16}"
-                  title="6 a 16 caracteres alfanuméricos"
-                  value={shortCode}
-                  onChange={(e) => setShortCode(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+                  type="color"
+                  value={qrColor}
+                  onChange={(e) => setQrColor(e.target.value)}
+                  className="h-8 w-10 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600">
-                  Color QR
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={qrColor}
-                    onChange={(e) => setQrColor(e.target.value)}
-                    className="h-7 w-9 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
-                  />
-                  <span className="font-mono text-xs text-slate-500">{qrColor}</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600">
-                  Color Fondo
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={qrBgColor}
-                    onChange={(e) => setQrBgColor(e.target.value)}
-                    className="h-7 w-9 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
-                  />
-                  <span className="font-mono text-xs text-slate-500">{qrBgColor}</span>
-                </div>
+                <span className="font-mono text-xs text-slate-600">{qrColor}</span>
               </div>
             </div>
-          )}
-        </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600">
+                Color Fondo
+              </label>
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  type="color"
+                  value={qrBgColor}
+                  onChange={(e) => setQrBgColor(e.target.value)}
+                  className="h-8 w-10 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
+                />
+                <span className="font-mono text-xs text-slate-600">{qrBgColor}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </form>
     </div>
   );

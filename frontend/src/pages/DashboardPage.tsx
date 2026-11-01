@@ -3,6 +3,7 @@ import { api, LinkItem } from '../services/api';
 import { CreateLinkForm } from '../components/CreateLinkForm';
 import { LinkCard } from '../components/LinkCard';
 import { QrPreviewModal } from '../components/QrPreviewModal';
+import { EditLinkModal } from '../components/EditLinkModal';
 import { RefreshCw, Link as LinkIcon, AlertCircle } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
@@ -10,6 +11,7 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedLinkForQr, setSelectedLinkForQr] = useState<LinkItem | null>(null);
+  const [selectedLinkForEdit, setSelectedLinkForEdit] = useState<LinkItem | null>(null);
 
   const fetchLinks = async () => {
     setLoading(true);
@@ -100,7 +102,7 @@ export const DashboardPage: React.FC = () => {
               <LinkCard
                 key={link.id}
                 link={link}
-                onUpdate={handleLinkUpdated}
+                onEdit={(item) => setSelectedLinkForEdit(item)}
                 onDelete={handleLinkDeleted}
                 onOpenModal={(item) => setSelectedLinkForQr(item)}
               />
@@ -113,6 +115,13 @@ export const DashboardPage: React.FC = () => {
       <QrPreviewModal
         link={selectedLinkForQr}
         onClose={() => setSelectedLinkForQr(null)}
+      />
+
+      {/* Modal para editar enlace y parámetros (invalida en Redis) */}
+      <EditLinkModal
+        link={selectedLinkForEdit}
+        onClose={() => setSelectedLinkForEdit(null)}
+        onLinkUpdated={handleLinkUpdated}
       />
     </main>
   );

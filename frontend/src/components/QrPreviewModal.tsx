@@ -41,14 +41,17 @@ export const QrPreviewModal: React.FC<QrPreviewModalProps> = ({ link, onClose })
       <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl transition-all">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-bold text-slate-800">
-              /{link.shortCode}
+          <div className="min-w-0 pr-3">
+            <h3 className="text-sm font-bold text-slate-900 truncate">
+              {link.name ? link.name : 'Código QR Dinámico'}
+            </h3>
+            <span className="text-[11px] font-mono text-indigo-600 block truncate">
+              {redirectUrl}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 shrink-0"
           >
             <X className="h-4 w-4" />
           </button>

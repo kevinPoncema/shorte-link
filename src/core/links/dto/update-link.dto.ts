@@ -9,6 +9,14 @@ import { QrConfigDto } from './qr-config.dto';
  */
 export class UpdateLinkDto {
   @ApiPropertyOptional({
+    description: 'Nombre o etiqueta de referencia para identificar el enlace',
+    example: 'Campaña Black Friday 2026',
+    maxLength: 150,
+  })
+  @IsOptional()
+  name?: string;
+
+  @ApiPropertyOptional({
     description: 'Nueva URL absoluta de destino (HTTP/HTTPS) para el QR dinámico',
     format: 'uri',
     example: 'https://fastify.dev/docs/latest',

@@ -123,6 +123,7 @@ export class LinksService {
 
     const link = this.linksRepository.create({
       shortCode,
+      name: dto.name ? dto.name.trim() : null,
       targetUrl: dto.targetUrl,
       isActive: true,
       qrConfig: dto.qrConfig ?? {},
@@ -206,6 +207,10 @@ export class LinksService {
         }
       }
       link.isActive = dto.isActive;
+    }
+
+    if (dto.name !== undefined) {
+      link.name = dto.name ? dto.name.trim() : null;
     }
 
     if (dto.targetUrl !== undefined) {

@@ -135,11 +135,13 @@ describe('LinksService, LinksController & RedirectController', () => {
   describe('createLink (Happy, Sad & Edge Cases)', () => {
     it('creates links with auto-generated or custom shortCode and prewarms Redis', async () => {
       const autoLink = await linksController.create(defaultUser, {
+        name: 'Promo Primavera',
         targetUrl: 'https://nestjs.com',
         qrConfig: { foregroundColor: '#112233', format: 'svg' },
       });
 
       expect(autoLink.shortCode).toMatch(/^[A-Za-z0-9]{7}$/);
+      expect(autoLink.name).toBe('Promo Primavera');
       expect(cacheServiceMock.setRedirectTarget).toHaveBeenCalledWith(
         autoLink.shortCode,
         'https://nestjs.com',

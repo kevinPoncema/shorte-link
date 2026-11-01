@@ -24,7 +24,7 @@ Con `SWAGGER_ENABLED=true`, el servidor expone automáticamente:
 | `GET` | `/links` | Bearer JWT | `200` | Lista los enlaces del usuario autenticado (`createdAt DESC`). |
 | `GET` | `/links/:id` | Bearer JWT | `200` | Obtiene el detalle de un enlace propio. |
 | `GET` | `/links/:id/qr` | Bearer JWT | `200` | Renderiza QR dinámico (`image/png` o `image/svg+xml`, query opcional `?format=png\|svg`). |
-| `PATCH` | `/links/:id` | Bearer JWT | `200` | Actualiza `targetUrl`, `isActive` o `qrConfig` e invalida `DEL r:{shortCode}`. |
+| `PATCH` | `/links/:id` | Bearer JWT | `200` | Actualiza `name`, `targetUrl`, `isActive` o `qrConfig` e invalida reactivamente `DEL r:{shortCode}`. |
 | `DELETE` | `/links/:id` | Bearer JWT | `204` | Elimina el enlace e invalida `DEL r:{shortCode}`. |
 | `GET` | `/billing/subscription` | Bearer JWT | `200` | Retorna `{ subscription }` activa del usuario o `null`. |
 | `GET` | `/:shortCode` | Pública | `302` | **Fast-Path:** Redirige con cabecera `Location` y encola en `queue:clicks`. |
