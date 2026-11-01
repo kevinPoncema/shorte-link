@@ -211,6 +211,6 @@ src/
     ├── services/           # billing.service.ts, stripe.service.ts
     ├── repositories/       # typeorm-subscription.repository.ts, typeorm-order.repository.ts
     ├── interfaces/         # subscription-repository.interface.ts, order-repository.interface.ts
-    ├── dto/                # checkout, portal, subscription, physical-order y toggle-physical-orders DTOs
+    ├── dto/                # checkout, portal, subscription, physical-order, complete-sandbox-checkout y toggle-physical-orders DTOs
     └── models/             # subscription.entity.ts, order.entity.ts, order-item.entity.ts
 ```

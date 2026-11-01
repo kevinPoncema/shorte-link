@@ -40,3 +40,4 @@ npm test --prefix frontend   # Pruebas unitarias/integración del frontend (Vite
 - [Configuración y Variables de Entorno](docs/configuration.md)
 - [API, OpenAPI, Seguridad y Testing](docs/api-and-security.md)
 - [Guía de Despliegue](docs/deployment.md)
+- [Hoja de Ruta de Auditoría y Refactorización](docs/audit-roadmap.md)
