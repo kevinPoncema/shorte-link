@@ -215,6 +215,7 @@ describe('Dynamic QR & Link Shortener API (Fastify E2E - Happy, Sad & Edge Cases
         { source: 'whatsapp.com', count: 180 },
         { source: 'instagram.com', count: 65 },
       ],
+      insertBatch: async () => {},
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({

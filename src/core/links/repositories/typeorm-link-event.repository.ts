@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { LinkEvent } from '../../models/link-event.entity';
 import {
+  CreateLinkEventRecord,
   ILinkEventRepository,
   RawCountryCount,
   RawNamedCount,
@@ -137,6 +138,13 @@ export class TypeOrmLinkEventRepository implements ILinkEventRepository {
       source: row.source,
       count: Number(row.count),
     }));
+  }
+
+  async insertBatch(events: CreateLinkEventRecord[]): Promise<void> {
+    if (events.length === 0) {
+      return;
+    }
+    await this.ormRepository.insert(events);
   }
 
   // ===========================================================================

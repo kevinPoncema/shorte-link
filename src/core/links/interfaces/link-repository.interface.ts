@@ -64,6 +64,14 @@ export interface ILinkRepository {
   ): Promise<RedirectLinkProjection | null>;
 
   /**
+   * Obtiene un listado de tuplas `{ id, shortCode }` asociadas a un conjunto de slugs cortos.
+   * Utilizado por el worker analítico para resolver en lote los IDs de enlaces procesados.
+   */
+  findIdsByShortCodes(
+    shortCodes: string[],
+  ): Promise<Array<{ id: string; shortCode: string }>>;
+
+  /**
    * Instancia y persiste un nuevo enlace en la base de datos.
    */
   createAndSave(attributes: CreateLinkAttributes): Promise<Link>;

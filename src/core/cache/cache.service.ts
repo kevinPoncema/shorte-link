@@ -98,4 +98,69 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async enqueueClickEvent(payload: ClickQueuePayload): Promise<void> {
     await this.redis.lpush(CLICKS_QUEUE_KEY, JSON.stringify(payload));
   }
+
+  /**
+   * Extrae en lote hasta `batchSize` eventos del final de la cola Redis (`RPOP queue:clicks`),
+   * liberando inmediatamente memoria RAM de Redis para que el worker los inserte en PostgreSQL.
+   */
+  async popClickEventsBatch(
+    batchSize: number = 200,
+  ): Promise<ClickQueuePayload[]> {
+    if (batchSize <= 0) {
+      return [];
+    }
+
+    try {
+      // Intento con RPOP multi-elemento soportado nativamente en Redis 6.2+
+      const raw = await (this.redis as any).rpop(CLICKS_QUEUE_KEY, batchSize);
+      if (!raw) {
+        return [];
+      }
+      const rawItems: string[] = Array.isArray(raw) ? raw : [raw];
+      return this.parseRawQueueItems(rawItems);
+    } catch {
+      // Fallback para Redis < 6.2 o mocks de pruebas unitarias
+      const pipeline = this.redis.pipeline();
+      for (let i = 0; i < batchSize; i++) {
+        pipeline.rpop(CLICKS_QUEUE_KEY);
+      }
+      const results = await pipeline.exec();
+      if (!results) {
+        return [];
+      }
+
+      const rawItems: string[] = [];
+      for (const [err, val] of results) {
+        if (!err && typeof val === 'string') {
+          rawItems.push(val);
+        }
+      }
+      return this.parseRawQueueItems(rawItems);
+    }
+  }
+
+  /**
+   * Retorna la cantidad de eventos encolados pendientes en Redis (`LLEN queue:clicks`).
+   */
+  async getQueueLength(): Promise<number> {
+    return this.redis.llen(CLICKS_QUEUE_KEY);
+  }
+
+  /**
+   * Parsea cadenas JSON ignorando registros malformados de forma resiliente.
+   */
+  private parseRawQueueItems(rawItems: string[]): ClickQueuePayload[] {
+    const valid: ClickQueuePayload[] = [];
+    for (const raw of rawItems) {
+      try {
+        const item = JSON.parse(raw) as ClickQueuePayload;
+        if (item && item.shortCode && item.ipAddress) {
+          valid.push(item);
+        }
+      } catch {
+        // Ignora JSON corrupto
+      }
+    }
+    return valid;
+  }
 }

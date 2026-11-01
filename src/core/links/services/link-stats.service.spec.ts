@@ -92,6 +92,7 @@ describe('LinkStatsService & TypeOrmLinkEventRepository', () => {
         { source: 'whatsapp.com', count: 180 },
         { source: 'instagram.com', count: 65 },
       ]),
+      insertBatch: jest.fn().mockResolvedValue(undefined),
     };
 
     linkStatsService = new LinkStatsService(

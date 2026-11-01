@@ -45,6 +45,20 @@ export interface RawReferrerCount {
 }
 
 /**
+ * Registro de datos requerido para insertar un evento analítico en lote (`INSERT INTO link_events`).
+ */
+export interface CreateLinkEventRecord {
+  linkId: string;
+  ipAddress: string;
+  userAgent: string | null;
+  country: string | null;
+  os: string | null;
+  browser: string | null;
+  referer: string | null;
+  scannedAt: Date;
+}
+
+/**
  * Contrato de repositorio de dominio para consultas analíticas sobre `LinkEvent` (`link_events`).
  * Cada método representa una consulta agregada optimizada para aprovechar el índice compuesto
  * `idx_link_events_scanned (link_id, scanned_at DESC)`.
@@ -104,4 +118,10 @@ export interface ILinkEventRepository {
     startDate: Date,
     limit?: number,
   ): Promise<RawReferrerCount[]>;
+
+  /**
+   * Inserta un lote de eventos analíticos en PostgreSQL mediante una única operación
+   * masiva (*Bulk Insert*).
+   */
+  insertBatch(events: CreateLinkEventRecord[]): Promise<void>;
 }

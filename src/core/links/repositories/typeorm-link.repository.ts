@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Link } from '../../models/link.entity';
 import {
   CreateLinkAttributes,
@@ -57,6 +57,18 @@ export class TypeOrmLinkRepository implements ILinkRepository {
     return this.ormRepository.findOne({
       select: ['id', 'shortCode', 'targetUrl', 'isActive'],
       where: { shortCode },
+    });
+  }
+
+  async findIdsByShortCodes(
+    shortCodes: string[],
+  ): Promise<Array<{ id: string; shortCode: string }>> {
+    if (shortCodes.length === 0) {
+      return [];
+    }
+    return this.ormRepository.find({
+      select: ['id', 'shortCode'],
+      where: { shortCode: In(shortCodes) },
     });
   }
 
