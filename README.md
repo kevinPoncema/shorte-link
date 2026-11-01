@@ -1,6 +1,6 @@
 # Dynamic QR & Link Shortener API
 
-Backend de alta concurrencia para acortamiento de enlaces y códigos QR dinámicos construido con **NestJS 11**, **Fastify**, **PostgreSQL** (`TypeORM`), **Redis** (`ioredis`) y **OpenAPI 3.0**.
+Backend de alta concurrencia para acortamiento de enlaces y códigos QR dinámicos construido con **NestJS 11**, **Fastify**, **PostgreSQL** (`TypeORM`), **Redis** (`ioredis`) y **OpenAPI 3.0**. Incluye un worker en segundo plano (`AnalyticsWorkerService`) con patrón orquestador que cada 15 segundos vacía en bloque la cola Redis `queue:clicks` hacia PostgreSQL (`link_events`), liberando memoria RAM de forma continua y garantizando analíticas precisas.
 
 ## Inicio Rápido (Stack Completo con Docker)
 

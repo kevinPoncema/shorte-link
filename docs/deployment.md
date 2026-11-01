@@ -50,7 +50,10 @@ docker compose up -d --build
 3. **Esquema PostgreSQL:**
    - Desactivar `DB_SYNCHRONIZE=false` en producción y gestionar cambios estructurales mediante migraciones controladas asegurando el índice compuesto `idx_link_events_scanned (link_id, scanned_at DESC)`.
 4. **Apagado Limpio (`Graceful Shutdown`):**
-   - `app.enableShutdownHooks()` está activo; ante señales `SIGTERM` / `SIGINT` (de Kubernetes o Docker), NestJS drena peticiones en vuelo y ejecuta `redis.quit()` antes de finalizar el proceso.
+   - `app.enableShutdownHooks()` está activo; ante señales `SIGTERM` / `SIGINT` (de Kubernetes o Docker), NestJS drena peticiones en vuelo, ejecuta `AnalyticsWorkerService.onModuleDestroy()` para vaciar los eventos pendientes en Redis hacia PostgreSQL y llama a `redis.quit()`.
+5. **Worker de Analíticas (`AnalyticsWorkerService`):**
+   - Ejecuta cada 15 segundos (`ANALYTICS_WORKER_INTERVAL_MS=15000`) extrayendo lotes de hasta 200 eventos (`ANALYTICS_WORKER_BATCH_SIZE=200`), liberando RAM en Redis y realizando *Bulk Insert* en PostgreSQL.
+   - Viene integrado por defecto en la imagen `api`. En arquitecturas a gran escala, puede deshabilitarse en las instancias web (`ANALYTICS_WORKER_ENABLED=false`) y asignarse a un contenedor dedicado.
 
 ---
 

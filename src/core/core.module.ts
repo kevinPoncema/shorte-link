@@ -18,6 +18,7 @@ import { TypeOrmLinkEventRepository } from './links/repositories/typeorm-link-ev
 import { TypeOrmLinkRepository } from './links/repositories/typeorm-link.repository';
 import { LinkStatsService } from './links/services/link-stats.service';
 import { LinksService } from './links/services/links.service';
+import { AnalyticsWorkerService } from './links/workers/analytics-worker.service';
 import { LinkEvent } from './models/link-event.entity';
 import { Link } from './models/link.entity';
 import { User } from './models/user.entity';
@@ -84,6 +85,7 @@ import { User } from './models/user.entity';
     JwtAuthGuard,
     LinksService,
     LinkStatsService,
+    AnalyticsWorkerService,
   ],
   exports: [
     USER_REPOSITORY,
@@ -95,6 +97,7 @@ import { User } from './models/user.entity';
     JwtModule,
     LinksService,
     LinkStatsService,
+    AnalyticsWorkerService,
     TypeOrmModule,
   ],
 })

@@ -53,7 +53,17 @@ La configuración se carga globalmente mediante `@nestjs/config` desde variables
 
 ---
 
-## 5. Perfil Recomendado por Entorno
+## 5. Worker de Analíticas (`AnalyticsWorkerService` - Ingesta desde Redis)
+
+| Variable | Default | Descripción |
+| :--- | :--- | :--- |
+| `ANALYTICS_WORKER_ENABLED` | `true` | Habilita el worker en segundo plano para consumir `queue:clicks`. Si se establece en `false`, desactiva el timer (útil en despliegues con worker dedicado). |
+| `ANALYTICS_WORKER_INTERVAL_MS` | `15000` | Frecuencia de ejecución en milisegundos (15 segundos por defecto). |
+| `ANALYTICS_WORKER_BATCH_SIZE` | `200` | Cantidad máxima de eventos extraídos y persistidos en bloque por ciclo para liberar RAM. |
+
+---
+
+## 6. Perfil Recomendado por Entorno
 
 | Parámetro | Desarrollo | Producción |
 | :--- | :--- | :--- |

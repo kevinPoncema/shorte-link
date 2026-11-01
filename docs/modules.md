@@ -23,7 +23,7 @@ flowchart TD
 | Módulo | Directorio | Responsabilidad | Exporta |
 | :--- | :--- | :--- | :--- |
 | **`PlansModule`** | `src/plans/` | Motor en memoria de cuotas (`PlanStrategy`) y repositorio de planes (`PLAN_REPOSITORY`). | `PlanContextService`, `PLAN_REPOSITORY`, `TypeOrmModule` |
-| **`CoreModule`** | `src/core/` | Orquestadores de negocio (`AuthService`, `LinksService`), repositorios de dominio (`USER_REPOSITORY`, `LINK_REPOSITORY`), `CacheService` (`ioredis`) y `RedirectController` (`/:shortCode`). | `USER_REPOSITORY`, `LINK_REPOSITORY`, `JwtAuthGuard`, `JwtModule`, `CacheService`, `AuthService`, `LinksService`, `TypeOrmModule` |
+| **`CoreModule`** | `src/core/` | Orquestadores de negocio (`AuthService`, `LinksService`, `LinkStatsService`, `AnalyticsWorkerService`), repositorios de dominio (`USER_REPOSITORY`, `LINK_REPOSITORY`, `LINK_EVENT_REPOSITORY`), `CacheService` (`ioredis`) y `RedirectController` (`/:shortCode`). | `USER_REPOSITORY`, `LINK_REPOSITORY`, `LINK_EVENT_REPOSITORY`, `JwtAuthGuard`, `JwtModule`, `CacheService`, `AuthService`, `LinksService`, `LinkStatsService`, `AnalyticsWorkerService`, `TypeOrmModule` |
 | **`BillingModule`** | `src/billing/` | Orquestador `BillingService`, repositorio `SUBSCRIPTION_REPOSITORY` y consulta de estado de suscripción (`GET /billing/subscription`). | `BillingService`, `SUBSCRIPTION_REPOSITORY`, `TypeOrmModule` |
 
 ---
@@ -69,6 +69,7 @@ classDiagram
 | :--- | :--- | :--- |
 | `USER_REPOSITORY` | `IUserRepository` | `TypeOrmUserRepository` |
 | `LINK_REPOSITORY` | `ILinkRepository` | `TypeOrmLinkRepository` |
+| `LINK_EVENT_REPOSITORY` | `ILinkEventRepository` | `TypeOrmLinkEventRepository` |
 | `PLAN_REPOSITORY` | `IPlanRepository` | `TypeOrmPlanRepository` |
 | `SUBSCRIPTION_REPOSITORY` | `ISubscriptionRepository` | `TypeOrmSubscriptionRepository` |
 
@@ -90,6 +91,17 @@ Cada método público de los servicios actúa como un **Orquestador declarativo*
   3. `applyAndValidateLinkUpdates(link, dto, user.sub, strategy)`
   4. `linkRepository.save(link)`
   5. `invalidateRedirectCache(updatedLink.shortCode)`
+* **`AnalyticsWorkerService.processBatch` (Orquestador Ingesta y Vaciado de RAM):**
+  1. `dequeueEvents(batchSize)`: extracción masiva desde `queue:clicks` en Redis liberando memoria.
+  2. `resolveLinkIds(rawEvents)`: resolución híbrida de slugs a IDs mediante caché local y consulta agrupada a PostgreSQL.
+  3. `transformEventsToEntities(rawEvents, linkIdMap)`: enriquecimiento con detección de OS, navegador y saneamiento de referer.
+  4. `persistBatch(recordsToInsert)`: inserción masiva (*bulk insert*) en `link_events` mediante `ILinkEventRepository`.
+* **`LinkStatsService.getLinkStats` (Orquestador de Analíticas y KPIs):**
+  1. `findAndAuthorizeLink(user.sub, linkId)`
+  2. `resolvePlanStrategy(user.plan)`
+  3. `calculateRetentionWindow(strategy)`
+  4. `fetchAggregatedMetrics(linkId, startDate)`
+  5. `assembleStatsResponse(linkId, strategy, totals, timeline, breakdowns)`
 * **`AuthService.register` (Orquestador):**
   1. `normalizeEmail(dto.email)`
   2. `assertEmailIsAvailable(normalizedEmail)`

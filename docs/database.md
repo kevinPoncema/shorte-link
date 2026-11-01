@@ -166,4 +166,4 @@ Configurado con política de desalojo **`allkeys-lru`** para liberar automática
 | Clave | Tipo Redis | Operaciones | Estructura / Valor |
 | :--- | :--- | :--- | :--- |
 | `r:{shortCode}` | `STRING` | `GET`, `SET`, `DEL` | Cadena con `targetUrl` para respuesta `302` directa. |
-| `queue:clicks` | `LIST` | `LPUSH` | JSON: `{ shortCode, linkId?, ipAddress, userAgent, referer, scannedAt }`. |
+| `queue:clicks` | `LIST` | `LPUSH`, `RPOP` | Buffer en RAM de clics entrantes. `LPUSH` asíncrono desde el Fast-Path y `RPOP` en lote cada 15s desde `AnalyticsWorkerService` para inserción en `link_events`. JSON: `{ shortCode, linkId?, ipAddress, userAgent, referer, scannedAt }`. |

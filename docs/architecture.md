@@ -20,8 +20,10 @@ flowchart LR
   subgraph ControlPlane["Control Plane (SaaS)"]
     Auth["AuthController\n/auth/*"]
     Links["LinksController\n/links/*"]
+    Stats["LinkStatsService\n/links/:id/stats"]
     Billing["BillingController\n/billing/*"]
     Plans["PlanContextService\nStrategy Map O(1)"]
+    Worker["AnalyticsWorkerService\nWorker Daemon (15s)"]
     PG[(PostgreSQL)]
   end
 
@@ -30,14 +32,20 @@ flowchart LR
   Redirect -.->|"Async LPUSH"| Clicks
   Redirect -.->|"Cache Miss"| PG
 
+  Clicks -.->|"RPOP Batch (15s)"| Worker
+  Worker -->|"Bulk Insert link_events"| PG
+  Worker -.->|"shortCode -> linkId cache"| PG
+
   Owner -->|"POST /auth/*"| Auth
   Owner -->|"Bearer JWT"| Links
+  Owner -->|"Bearer JWT"| Stats
   Owner -->|"Bearer JWT"| Billing
 
   Auth --> PG
   Links -->|"O(1)"| Plans
   Links -->|"CRUD"| PG
   Links -->|"SET / DEL r:{code}"| Redis
+  Stats -->|"Agregaciones SQL"| PG
   Billing --> PG
 ```
 
@@ -107,9 +115,48 @@ sequenceDiagram
 
 ---
 
-## 4. Decisiones Técnicas Clave
+## 4. Secuencia UML — Ingestión en Lote y Vaciado de RAM (`AnalyticsWorkerService`)
+
+El worker de analíticas procesa periódicamente cada 15 segundos la cola `queue:clicks` mediante el patrón **Orquestador**:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant T as Timer (15s)
+  participant W as AnalyticsWorkerService (Orquestador)
+  participant CS as CacheService (Redis)
+  participant LR as LinkRepository (PostgreSQL)
+  participant ER as LinkEventRepository (PostgreSQL)
+
+  T->>W: runCycle()
+  alt isProcessing == true
+    W-->>T: Omitir ciclo (evita concurrencia solapada)
+  else isProcessing == false
+    W->>CS: popClickEventsBatch(batchSize: 200)
+    CS-->>W: rawEvents[] (RPOP queue:clicks - Libera RAM)
+    alt rawEvents.length == 0
+      W-->>T: Fin de ciclo (0 ms)
+    else Hay eventos
+      W->>W: resolveLinkIds(rawEvents)
+      opt Slugs no encontrados en caché local
+        W->>LR: findIdsByShortCodes(missingSlugs)
+        LR-->>W: [{ id, shortCode }]
+      end
+      W->>W: transformEventsToEntities(rawEvents, linkIdMap)
+      Note over W: Parseo de OS, Navegador y timestamp
+      W->>ER: insertBatch(recordsToInsert)
+      ER-->>W: Batch insert exitoso
+      W-->>T: Clics persistidos y log informativo
+    end
+  end
+```
+
+---
+
+## 5. Decisiones Técnicas Clave
 
 - **Fastify + `trustProxy: true`:** Minimiza overhead HTTP y extrae la IP real del cliente desde `X-Forwarded-For` detrás de proxies/CDNs.
 - **Autorización Stateless:** El JWT transporta `{ sub, email, plan }`, permitiendo validar permisos y cuotas en memoria (`O(1)`) sin consultar la tabla `users` o `plans` en cada request.
-- **Telemetría No Bloqueante:** `recordClickAsync` ejecuta `LPUSH queue:clicks` en modo *fire-and-forget*; cualquier latencia o fallo puntual en la cola analítica nunca bloquea ni rompe la respuesta `HTTP 302`.
+- **Telemetría No Bloqueante & Consumo en Lotes:** `recordClickAsync` ejecuta `LPUSH queue:clicks` en modo *fire-and-forget* (Data Plane). Cada 15 segundos, `AnalyticsWorkerService` realiza `RPOP` en bloque (hasta 200 eventos), purga la memoria RAM de Redis y ejecuta una única inserción masiva (`INSERT INTO link_events VALUES (...)`) en PostgreSQL.
+- **Tolerancia a Apagados (`Graceful Shutdown`):** Al detener el servicio (`onModuleDestroy`), el worker ejecuta un vaciado forzado final de los eventos pendientes en Redis para prevenir pérdida de datos.
 - **Invalidación Reactiva (`DEL`):** En actualizaciones y borrados se elimina `r:{shortCode}` en lugar de sobreescribir ciegamente, evitando condiciones de carrera y destinos obsoletos.
