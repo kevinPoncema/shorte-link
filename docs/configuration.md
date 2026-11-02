@@ -27,7 +27,17 @@ La configuración se carga globalmente mediante `@nestjs/config` desde variables
 | `DB_PASSWORD` | `postgres` | Contraseña de conexión. |
 | `DB_NAME` | `qr_shortener` | Nombre de la base de datos. |
 | `DB_SYNCHRONIZE` | `true` | Sincronización automática de entidades TypeORM (**obligatorio `false` en producción**). |
+| `DB_MIGRATIONS_RUN` | `false` | Ejecuta migraciones pendientes automáticamente al iniciar la aplicación. |
 | `DB_LOGGING` | `false` | Imprime en consola las consultas SQL ejecutadas. |
+
+### Comandos de Migraciones TypeORM (CLI)
+
+| Script NPM | Comando | Propósito |
+| :--- | :--- | :--- |
+| `npm run migration:run` | `typeorm-ts-node-commonjs migration:run -d src/data-source.ts` | Aplica todas las migraciones pendientes en PostgreSQL. |
+| `npm run migration:revert` | `typeorm-ts-node-commonjs migration:revert -d src/data-source.ts` | Revierte la última migración aplicada. |
+| `npm run migration:show` | `typeorm-ts-node-commonjs migration:show -d src/data-source.ts` | Lista el estado de las migraciones ejecutadas `[X]` y pendientes `[ ]`. |
+| `npm run migration:generate` | `typeorm-ts-node-commonjs migration:generate -d src/data-source.ts <ruta>` | Genera un archivo de migración diferencial a partir de cambios en entidades. |
 
 ---
 
@@ -50,6 +60,9 @@ La configuración se carga globalmente mediante `@nestjs/config` desde variables
 | `JWT_EXPIRES_IN` | `1d` | Expiración de tokens emitidos (`15m`, `12h`, `1d`, `7d`). |
 | `BCRYPT_SALT_ROUNDS` | `10` | Factor de costo `bcrypt` para hashing de contraseñas. |
 | `IP_HASH_SALT` | `default-ip-anonymization-salt` | Sal secreta para anonimizar IPs (`SHA-256`) antes de encolar clics. |
+| `CORS_ORIGIN` | `*` | Origen(es) permitidos por CORS en Fastify (`http://localhost:5173` o dominio de producción). |
+| `THROTTLE_TTL_MS` | `60000` | Ventana de tiempo (ms) para el rate limiting global de `@nestjs/throttler`. |
+| `THROTTLE_LIMIT` | `120` | Cantidad máxima de solicitudes por IP dentro de la ventana `THROTTLE_TTL_MS`. *(Nota: `GET /:shortCode` cuenta con `@SkipThrottle()` para nunca bloquear redirecciones de códigos QR bajo tráfico masivo).* |
 
 ---
 

@@ -42,6 +42,9 @@ import { PlansModule } from './plans/plans.module';
         autoLoadEntities: true,
         synchronize:
           configService.get<string>('DB_SYNCHRONIZE', 'true') === 'true',
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
+        migrationsRun:
+          configService.get<string>('DB_MIGRATIONS_RUN', 'false') === 'true',
         logging: configService.get<string>('DB_LOGGING', 'false') === 'true',
       }),
     }),
