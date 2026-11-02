@@ -10,7 +10,9 @@ import { Subscription } from './models/subscription.entity';
 import { TypeOrmOrderRepository } from './repositories/typeorm-order.repository';
 import { TypeOrmSubscriptionRepository } from './repositories/typeorm-subscription.repository';
 import { BillingService } from './services/billing.service';
+import { PhysicalOrderService } from './services/physical-order.service';
 import { StripeService } from './services/stripe.service';
+import { StripeWebhookService } from './services/stripe-webhook.service';
 
 /**
  * Módulo de facturación (`BillingModule`).
@@ -33,10 +35,14 @@ import { StripeService } from './services/stripe.service';
       useClass: TypeOrmOrderRepository,
     },
     StripeService,
+    PhysicalOrderService,
+    StripeWebhookService,
     BillingService,
   ],
   exports: [
     BillingService,
+    PhysicalOrderService,
+    StripeWebhookService,
     StripeService,
     SUBSCRIPTION_REPOSITORY,
     ORDER_REPOSITORY,
