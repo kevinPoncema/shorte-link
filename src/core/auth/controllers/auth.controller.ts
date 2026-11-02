@@ -17,6 +17,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
@@ -41,6 +42,7 @@ export class AuthController {
   /**
    * Registra una nueva cuenta de usuario, le asigna el plan `'STARTER'` y retorna su JWT.
    */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('register')
   @ApiOperation({
     summary: 'Registrar un nuevo usuario',
@@ -64,6 +66,7 @@ export class AuthController {
   /**
    * Valida credenciales existentes y emite un token JWT stateless.
    */
+  @Throttle({ default: { limit: 15, ttl: 60000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

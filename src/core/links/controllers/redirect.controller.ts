@@ -16,14 +16,19 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { SkipThrottle } from '@nestjs/throttler';
 import { resolveVisitorCountry } from '../helpers/country-resolver.helper';
 import { LinksService } from '../services/links.service';
 
 /**
  * Controlador público del **Data Plane** (`GET /:shortCode`).
  * Optimizado para latencia sub-milisegundo sin guards de autenticación ni validación de planes.
+ * 
+ * Se aplica `@SkipThrottle()` para garantizar que la redirección de enlaces cortos
+ * y escaneos de códigos QR nunca sea bloqueada ni estrangulada por rate limiting.
  */
 @ApiTags('Redirect (Fast-Path)')
+@SkipThrottle()
 @Controller()
 export class RedirectController {
   constructor(
