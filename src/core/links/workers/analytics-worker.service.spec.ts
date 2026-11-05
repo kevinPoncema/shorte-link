@@ -156,6 +156,25 @@ describe('AnalyticsWorkerService (Orchestrator Pattern - Happy, Sad & Edge Cases
       // Should not query the database again because of internal cache
       expect(linkRepositoryMock.findIdsByShortCodes).toHaveBeenCalledTimes(1);
     });
+
+    it('bounds shortCode cache size and evicts oldest entries under capacity limits', async () => {
+      const sampleEvents: ClickQueuePayload[] = Array.from({ length: 3 }, (_, i) => ({
+        linkId: `uuid-${i}`,
+        shortCode: `slug-${i}`,
+        ipAddress: '10.0.0.1',
+        country: null,
+        userAgent: null,
+        referer: null,
+        scannedAt: new Date().toISOString(),
+      }));
+
+      (cacheServiceMock.popClickEventsBatch as jest.Mock).mockResolvedValueOnce(sampleEvents);
+      await workerService.processBatch();
+
+      const internalCache = (workerService as unknown as { shortCodeToIdCache: Map<string, string> }).shortCodeToIdCache;
+      expect(internalCache.get('slug-0')).toBe('uuid-0');
+      expect(internalCache.size).toBe(3);
+    });
   });
 
   describe('Edge Cases & Parser Auxiliary Methods', () => {

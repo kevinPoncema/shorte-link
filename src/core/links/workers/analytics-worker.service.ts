@@ -19,6 +19,7 @@ import {
 
 export const DEFAULT_WORKER_INTERVAL_MS = 15_000;
 export const DEFAULT_WORKER_BATCH_SIZE = 200;
+export const MAX_SHORT_CODE_CACHE_SIZE = 10_000;
 
 /**
  * Worker en segundo plano para el procesamiento periódico de analíticas (`AnalyticsWorkerService`).
@@ -146,7 +147,12 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       return 0;
     }
 
-    await this.persistBatch(recordsToInsert);
+    try {
+      await this.persistBatch(recordsToInsert);
+    } catch (persistError: unknown) {
+      await this.cacheService.reEnqueueClickEventsBatch(rawEvents);
+      throw persistError;
+    }
 
     this.logger.log(
       `Flushed ${recordsToInsert.length} click events from Redis RAM into PostgreSQL link_events.`,
@@ -163,6 +169,27 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
     return this.cacheService.popClickEventsBatch(batchSize);
   }
 
+  private setCachedLinkId(shortCode: string, linkId: string): void {
+    if (this.shortCodeToIdCache.has(shortCode)) {
+      this.shortCodeToIdCache.delete(shortCode);
+    } else if (this.shortCodeToIdCache.size >= MAX_SHORT_CODE_CACHE_SIZE) {
+      const oldestKey = this.shortCodeToIdCache.keys().next().value;
+      if (oldestKey) {
+        this.shortCodeToIdCache.delete(oldestKey);
+      }
+    }
+    this.shortCodeToIdCache.set(shortCode, linkId);
+  }
+
+  private getCachedLinkId(shortCode: string): string | undefined {
+    const linkId = this.shortCodeToIdCache.get(shortCode);
+    if (linkId) {
+      this.shortCodeToIdCache.delete(shortCode);
+      this.shortCodeToIdCache.set(shortCode, linkId);
+    }
+    return linkId;
+  }
+
   /**
    * Resuelve el mapa `shortCode -> linkId` combinando la caché en memoria y consultas
    * agrupadas a PostgreSQL para los slugs desconocidos.
@@ -176,9 +203,9 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
     for (const event of events) {
       if (event.linkId) {
         resultMap.set(event.shortCode, event.linkId);
-        this.shortCodeToIdCache.set(event.shortCode, event.linkId);
+        this.setCachedLinkId(event.shortCode, event.linkId);
       } else {
-        const cachedId = this.shortCodeToIdCache.get(event.shortCode);
+        const cachedId = this.getCachedLinkId(event.shortCode);
         if (cachedId) {
           resultMap.set(event.shortCode, cachedId);
         } else {
@@ -193,7 +220,7 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       );
       for (const link of dbLinks) {
         resultMap.set(link.shortCode, link.id);
-        this.shortCodeToIdCache.set(link.shortCode, link.id);
+        this.setCachedLinkId(link.shortCode, link.id);
       }
     }
 
