@@ -23,10 +23,18 @@ import {
 import { Order } from '../models/order.entity';
 import { StripeService } from './stripe.service';
 
-/**
- * Servicio de dominio especializado en pedidos físicos de insumos de hardware (QR + NFC).
- * Desacopla la lógica de manufactura y venta física de `BillingService` aplicando SRP.
- */
+export interface HardwareCalculationResult {
+  totalAmount: number;
+  orderItems: Array<{
+    linkId: string | null;
+    itemType: string;
+    quantity: number;
+    unitPrice: number;
+    specifications: Record<string, any> | null;
+  }>;
+  lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
+}
+
 @Injectable()
 export class PhysicalOrderService {
   private readonly logger = new Logger(PhysicalOrderService.name);
@@ -42,9 +50,6 @@ export class PhysicalOrderService {
     private readonly configService: ConfigService,
   ) {}
 
-  /**
-   * Determina si el módulo de pedidos físicos está habilitado.
-   */
   isPhysicalOrdersEnabled(): boolean {
     if (this.physicalOrdersFlagOverride !== null) {
       return this.physicalOrdersFlagOverride;
@@ -56,9 +61,6 @@ export class PhysicalOrderService {
     return this.parseBooleanFlag(rawFlag, true);
   }
 
-  /**
-   * Conmuta en tiempo de ejecución el Feature Flag de pedidos físicos.
-   */
   setPhysicalOrdersEnabled(enabled: boolean): { physicalOrdersEnabled: boolean } {
     this.physicalOrdersFlagOverride = Boolean(enabled);
     this.logger.log(
@@ -67,34 +69,20 @@ export class PhysicalOrderService {
     return { physicalOrdersEnabled: this.isPhysicalOrdersEnabled() };
   }
 
-  /**
-   * Obtiene la tabla de precios unitarios configurados para cada tipo de hardware.
-   */
   getBaseHardwarePrices(): Record<string, number> {
-    const parsePrice = (envVar: string, fallback: number): number => {
-      const val = parseFloat(this.configService.get<string>(envVar, ''));
-      return isNaN(val) || val <= 0 ? fallback : val;
-    };
-
     return {
-      acrylic_stand: parsePrice('PRICE_ACRYLIC_STAND', 15.0),
-      plastic_card: parsePrice('PRICE_PLASTIC_CARD', 10.0),
-      nfc_card: parsePrice('PRICE_NFC_CARD', 12.5),
-      nfc_sticker: parsePrice('PRICE_NFC_STICKER', 5.0),
+      acrylic_stand: this.parseConfiguredPrice('PRICE_ACRYLIC_STAND', 15.0),
+      plastic_card: this.parseConfiguredPrice('PRICE_PLASTIC_CARD', 10.0),
+      nfc_card: this.parseConfiguredPrice('PRICE_NFC_CARD', 12.5),
+      nfc_sticker: this.parseConfiguredPrice('PRICE_NFC_STICKER', 5.0),
     };
   }
 
-  /**
-   * Lista el historial de órdenes de hardware solicitadas por un usuario.
-   */
   async findOrdersByUserId(userId: string): Promise<Order[]> {
     const normalizedUserId = userId.trim();
     return this.orderRepository.findByUserId(normalizedUserId);
   }
 
-  /**
-   * Crea una orden de compra física y genera la sesión de Stripe Checkout correspondiente.
-   */
   async createPhysicalOrderCheckout(
     user: JwtPayload,
     dto: CreatePhysicalOrderCheckoutDto,
@@ -105,20 +93,110 @@ export class PhysicalOrderService {
     shouldFallbackFn: (err: any) => boolean,
   ): Promise<CheckoutResponseDto> {
     this.assertPhysicalOrdersEnabled();
+    this.assertCheckoutUrlsProvided(dto.successUrl, dto.cancelUrl);
+    await this.validateLinkOwnershipForItems(user.sub, dto.items);
 
-    if (!dto.successUrl || !dto.cancelUrl) {
+    const { totalAmount, orderItems, lineItems } =
+      this.buildOrderAndLineItems(dto.items, true);
+
+    const savedOrder = await this.persistOrder(
+      user.sub,
+      totalAmount,
+      dto.shippingAddress,
+      orderItems,
+      'pending',
+      'unfulfilled',
+    );
+
+    const customerId = await this.resolveStripeCustomerId(user.sub);
+
+    return this.executeStripeOrderCheckout(
+      user,
+      savedOrder,
+      customerId,
+      lineItems,
+      dto,
+      fallbackUrlBuilder,
+      shouldFallbackFn,
+    );
+  }
+
+  async createDirectPhysicalOrder(
+    user: JwtPayload,
+    dto: Omit<CreatePhysicalOrderCheckoutDto, 'successUrl' | 'cancelUrl'>,
+  ): Promise<Order> {
+    this.assertPhysicalOrdersEnabled();
+    await this.validateLinkOwnershipForItems(user.sub, dto.items);
+
+    const { totalAmount, orderItems } =
+      this.buildOrderAndLineItems(dto.items, false);
+
+    const savedOrder = await this.persistOrder(
+      user.sub,
+      totalAmount,
+      dto.shippingAddress,
+      orderItems,
+      'paid',
+      'in_production',
+    );
+
+    this.logger.log(
+      `Orden física ${savedOrder.id} emitida directamente y pasada a manufactura. Total: $${totalAmount}`,
+    );
+
+    return savedOrder;
+  }
+
+  async validateLinkOwnershipForItems(
+    userId: string,
+    items: Array<{ linkId?: string }>,
+  ): Promise<void> {
+    for (const item of items) {
+      if (item.linkId) {
+        try {
+          await this.linksService.findOneByUser(userId, item.linkId);
+        } catch {
+          throw new NotFoundException(
+            `El enlace con ID '${item.linkId}' no existe o no pertenece a tu cuenta.`,
+          );
+        }
+      }
+    }
+  }
+
+  assertPhysicalOrdersEnabled(): void {
+    if (!this.isPhysicalOrdersEnabled()) {
+      throw new ForbiddenException(
+        'El módulo de pedidos físicos se encuentra temporalmente deshabilitado por el administrador.',
+      );
+    }
+  }
+
+  private assertCheckoutUrlsProvided(
+    successUrl?: string,
+    cancelUrl?: string,
+  ): void {
+    if (!successUrl || !cancelUrl) {
       throw new BadRequestException(
         'successUrl y cancelUrl son obligatorios para generar una sesión de Stripe Checkout.',
       );
     }
+  }
 
-    await this.validateLinkOwnershipForItems(user.sub, dto.items);
+  private parseConfiguredPrice(envVar: string, fallbackPrice: number): number {
+    const rawValue = parseFloat(this.configService.get<string>(envVar, ''));
+    return isNaN(rawValue) || rawValue <= 0 ? fallbackPrice : rawValue;
+  }
 
+  private buildOrderAndLineItems(
+    items: CreatePhysicalOrderCheckoutDto['items'],
+    includeLineItems: boolean,
+  ): HardwareCalculationResult {
     const priceMap = this.getBaseHardwarePrices();
     let totalAmount = 0;
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
-    const orderItems = dto.items.map((item) => {
+    const orderItems = items.map((item) => {
       const unitPrice = priceMap[item.itemType];
       if (unitPrice === undefined) {
         throw new BadRequestException(
@@ -128,29 +206,11 @@ export class PhysicalOrderService {
 
       totalAmount += unitPrice * item.quantity;
 
-      const itemName =
-        item.itemType === 'acrylic_stand'
-          ? 'Placa Acrílica con Código QR y chip NFC'
-          : item.itemType === 'plastic_card' || item.itemType === 'nfc_card'
-            ? 'Tarjeta Plástica PVC con Código QR y chip NFC'
-            : item.itemType === 'nfc_sticker'
-              ? 'Sticker Adhesivo con Código QR y chip NFC'
-              : `Hardware QR: ${item.itemType}`;
-
-      lineItems.push({
-        price_data: {
-          currency: 'usd',
-          unit_amount: Math.round(unitPrice * 100),
-          product_data: {
-            name: itemName,
-            metadata: {
-              itemType: item.itemType,
-              linkId: item.linkId || '',
-            },
-          },
-        },
-        quantity: item.quantity,
-      });
+      if (includeLineItems) {
+        lineItems.push(
+          this.buildStripeLineItem(item.itemType, unitPrice, item.quantity, item.linkId),
+        );
+      }
 
       return {
         linkId: item.linkId ?? null,
@@ -161,25 +221,85 @@ export class PhysicalOrderService {
       };
     });
 
+    return { totalAmount, orderItems, lineItems };
+  }
+
+  private buildStripeLineItem(
+    itemType: string,
+    unitPrice: number,
+    quantity: number,
+    linkId?: string,
+  ): Stripe.Checkout.SessionCreateParams.LineItem {
+    return {
+      price_data: {
+        currency: 'usd',
+        unit_amount: Math.round(unitPrice * 100),
+        product_data: {
+          name: this.resolveHardwareItemDisplayName(itemType),
+          metadata: {
+            itemType,
+            linkId: linkId || '',
+          },
+        },
+      },
+      quantity,
+    };
+  }
+
+  private resolveHardwareItemDisplayName(itemType: string): string {
+    switch (itemType) {
+      case 'acrylic_stand':
+        return 'Placa Acrílica con Código QR y chip NFC';
+      case 'plastic_card':
+      case 'nfc_card':
+        return 'Tarjeta Plástica PVC con Código QR y chip NFC';
+      case 'nfc_sticker':
+        return 'Sticker Adhesivo con Código QR y chip NFC';
+      default:
+        return `Hardware QR: ${itemType}`;
+    }
+  }
+
+  private async persistOrder(
+    userId: string,
+    totalAmount: number,
+    shippingAddress: any,
+    items: any[],
+    paymentStatus: 'pending' | 'paid',
+    fulfillmentStatus: 'unfulfilled' | 'in_production',
+  ): Promise<Order> {
     const newOrder: Partial<Order> = {
-      userId: user.sub,
+      userId,
       totalAmount,
       currency: 'USD',
-      paymentStatus: 'pending',
-      fulfillmentStatus: 'unfulfilled',
-      shippingAddress: dto.shippingAddress,
-      items: orderItems as any,
+      paymentStatus,
+      fulfillmentStatus,
+      shippingAddress,
+      items,
     };
+    return this.orderRepository.createAndSave(newOrder);
+  }
 
-    const savedOrder = await this.orderRepository.createAndSave(newOrder);
-
-    const subscription = await this.subscriptionRepository.findByUserId(user.sub);
-    const customerId =
-      subscription?.providerCustomerId &&
+  private async resolveStripeCustomerId(userId: string): Promise<string | undefined> {
+    const subscription = await this.subscriptionRepository.findByUserId(userId);
+    return subscription?.providerCustomerId &&
       !subscription.providerCustomerId.startsWith('cus_sim_')
-        ? subscription.providerCustomerId
-        : undefined;
+      ? subscription.providerCustomerId
+      : undefined;
+  }
 
+  private async executeStripeOrderCheckout(
+    user: JwtPayload,
+    savedOrder: Order,
+    customerId: string | undefined,
+    lineItems: Stripe.Checkout.SessionCreateParams.LineItem[],
+    dto: CreatePhysicalOrderCheckoutDto,
+    fallbackUrlBuilder: (
+      savedOrder: Order,
+      dto: CreatePhysicalOrderCheckoutDto,
+    ) => string,
+    shouldFallbackFn: (err: any) => boolean,
+  ): Promise<CheckoutResponseDto> {
     try {
       const session = await this.stripeService.createPaymentCheckoutSession({
         customerId,
@@ -187,8 +307,8 @@ export class PhysicalOrderService {
         orderId: savedOrder.id,
         userId: user.sub,
         lineItems,
-        successUrl: dto.successUrl,
-        cancelUrl: dto.cancelUrl,
+        successUrl: dto.successUrl!,
+        cancelUrl: dto.cancelUrl!,
       });
 
       await this.orderRepository.update(savedOrder.id, {
@@ -208,13 +328,7 @@ export class PhysicalOrderService {
       }
 
       if (shouldFallbackFn(err)) {
-        const simId = `cs_sandbox_order_${savedOrder.id}`;
-        await this.orderRepository.update(savedOrder.id, {
-          providerPaymentIntentId: simId,
-        });
-
-        const fallbackUrl = fallbackUrlBuilder(savedOrder, dto);
-        return { checkoutUrl: fallbackUrl };
+        return this.handleSandboxFallback(savedOrder, dto, fallbackUrlBuilder);
       }
 
       this.logger.error(
@@ -227,84 +341,19 @@ export class PhysicalOrderService {
     }
   }
 
-  /**
-   * Emite directamente una orden física marcada como pagada y en producción.
-   */
-  async createDirectPhysicalOrder(
-    user: JwtPayload,
-    dto: Omit<CreatePhysicalOrderCheckoutDto, 'successUrl' | 'cancelUrl'>,
-  ): Promise<Order> {
-    this.assertPhysicalOrdersEnabled();
-    await this.validateLinkOwnershipForItems(user.sub, dto.items);
-
-    const priceMap = this.getBaseHardwarePrices();
-    let totalAmount = 0;
-
-    const orderItems = dto.items.map((item) => {
-      const unitPrice = priceMap[item.itemType];
-      if (unitPrice === undefined) {
-        throw new BadRequestException(
-          `Tipo de insumo no soportado: '${item.itemType}'`,
-        );
-      }
-      totalAmount += unitPrice * item.quantity;
-      return {
-        linkId: item.linkId ?? null,
-        itemType: item.itemType,
-        quantity: item.quantity,
-        unitPrice,
-        specifications: item.specifications ?? null,
-      };
+  private async handleSandboxFallback(
+    savedOrder: Order,
+    dto: CreatePhysicalOrderCheckoutDto,
+    fallbackUrlBuilder: (
+      savedOrder: Order,
+      dto: CreatePhysicalOrderCheckoutDto,
+    ) => string,
+  ): Promise<CheckoutResponseDto> {
+    const simId = `cs_sandbox_order_${savedOrder.id}`;
+    await this.orderRepository.update(savedOrder.id, {
+      providerPaymentIntentId: simId,
     });
-
-    const newOrder: Partial<Order> = {
-      userId: user.sub,
-      totalAmount,
-      currency: 'USD',
-      paymentStatus: 'paid',
-      fulfillmentStatus: 'in_production',
-      shippingAddress: dto.shippingAddress,
-      items: orderItems as any,
-    };
-
-    const savedOrder = await this.orderRepository.createAndSave(newOrder);
-
-    this.logger.log(
-      `Orden física ${savedOrder.id} emitida directamente y pasada a manufactura. Total: $${totalAmount}`,
-    );
-
-    return savedOrder;
-  }
-
-  /**
-   * Verifica propiedad de los enlaces antes de asociarlos a un ítem físico.
-   */
-  async validateLinkOwnershipForItems(
-    userId: string,
-    items: Array<{ linkId?: string }>,
-  ): Promise<void> {
-    for (const item of items) {
-      if (item.linkId) {
-        try {
-          await this.linksService.findOneByUser(userId, item.linkId);
-        } catch {
-          throw new NotFoundException(
-            `El enlace con ID '${item.linkId}' no existe o no pertenece a tu cuenta.`,
-          );
-        }
-      }
-    }
-  }
-
-  /**
-   * Lanza ForbiddenException si los pedidos físicos están deshabilitados.
-   */
-  assertPhysicalOrdersEnabled(): void {
-    if (!this.isPhysicalOrdersEnabled()) {
-      throw new ForbiddenException(
-        'El módulo de pedidos físicos se encuentra temporalmente deshabilitado por el administrador.',
-      );
-    }
+    return { checkoutUrl: fallbackUrlBuilder(savedOrder, dto) };
   }
 
   private parseBooleanFlag(value: unknown, defaultValue = true): boolean {

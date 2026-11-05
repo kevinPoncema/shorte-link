@@ -4,10 +4,6 @@ import type Stripe from 'stripe';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const StripeConstructor = require('stripe');
 
-/**
- * Servicio de infraestructura que encapsula el SDK oficial de Stripe.
- * Expone métodos limpios y desacoplados para la gestión de clientes, Checkout y Customer Portal.
- */
 @Injectable()
 export class StripeService {
   private readonly logger = new Logger(StripeService.name);
@@ -27,23 +23,14 @@ export class StripeService {
     });
   }
 
-  /**
-   * Obtiene la instancia directa del SDK de Stripe para operaciones avanzadas.
-   */
   getStripeInstance(): Stripe {
     return this.stripe;
   }
 
-  /**
-   * Retorna el secreto configurado para la verificación de firma HMAC de webhooks.
-   */
   getWebhookSecret(): string {
     return this.webhookSecret;
   }
 
-  /**
-   * Busca un cliente en Stripe por su email o crea uno nuevo vinculando el `userId` en los metadatos.
-   */
   async findOrCreateCustomer(
     email: string,
     userId: string,
@@ -65,12 +52,6 @@ export class StripeService {
     });
   }
 
-  /**
-   * Crea una sesión de Stripe Checkout en modo recurrente (`subscription`).
-   * Si `priceId` es un identificador placeholder de desarrollo o no existe aún en la cuenta
-   * de Stripe del usuario, utiliza `price_data` dinámico ($19.00 USD / mes) para abrir
-   * `checkout.stripe.com` sin requerir creación manual previa en Stripe Dashboard.
-   */
   async createSubscriptionCheckoutSession(params: {
     customerId: string;
     priceId: string;
@@ -79,29 +60,65 @@ export class StripeService {
     userId: string;
   }): Promise<Stripe.Checkout.Session> {
     const normalizedPrice = params.priceId.trim();
-    const isMockPriceId =
-      normalizedPrice.toLowerCase().includes('mock') ||
-      normalizedPrice.toLowerCase().includes('placeholder') ||
-      normalizedPrice.toLowerCase().includes('simulated');
+    const baseSessionParams = this.buildBaseSubscriptionSessionParams(params);
 
-    const buildInlinePriceLineItem =
-      (): Stripe.Checkout.SessionCreateParams.LineItem => ({
-        price_data: {
-          currency: 'usd',
-          unit_amount: 1900,
-          recurring: { interval: 'month' },
-          product_data: {
-            name: 'Plan PRO — QR Maker SaaS',
-            description:
-              'Hasta 50 enlaces dinámicos activos, QR personalizado y analíticas de 365 días.',
-          },
-        },
-        quantity: 1,
-      });
+    if (this.isMockPriceId(normalizedPrice)) {
+      return this.createDynamicSubscriptionSession(baseSessionParams);
+    }
 
-    const baseSessionParams = {
+    return this.createPricedSubscriptionSession(baseSessionParams, normalizedPrice);
+  }
+
+  async createPortalSession(
+    customerId: string,
+    returnUrl: string,
+  ): Promise<Stripe.BillingPortal.Session> {
+    return this.stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: returnUrl,
+    });
+  }
+
+  async createPaymentCheckoutSession(params: {
+    customerId?: string;
+    customerEmail?: string;
+    orderId: string;
+    userId: string;
+    lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<Stripe.Checkout.Session> {
+    const sessionParams = this.buildPaymentSessionParams(params);
+    return this.stripe.checkout.sessions.create(sessionParams);
+  }
+
+  constructWebhookEvent(
+    payload: Buffer | string,
+    signature: string,
+    secret?: string,
+  ): Stripe.Event {
+    const webhookSecret = secret || this.webhookSecret;
+    return this.stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+  }
+
+  private isMockPriceId(priceId: string): boolean {
+    const lower = priceId.toLowerCase();
+    return (
+      lower.includes('mock') ||
+      lower.includes('placeholder') ||
+      lower.includes('simulated')
+    );
+  }
+
+  private buildBaseSubscriptionSessionParams(params: {
+    customerId: string;
+    successUrl: string;
+    cancelUrl: string;
+    userId: string;
+  }): Stripe.Checkout.SessionCreateParams {
+    return {
       customer: params.customerId,
-      mode: 'subscription' as const,
+      mode: 'subscription',
       success_url: params.successUrl,
       cancel_url: params.cancelUrl,
       metadata: {
@@ -113,23 +130,16 @@ export class StripeService {
         },
       },
     };
+  }
 
-    if (isMockPriceId) {
-      return this.stripe.checkout.sessions.create({
-        ...baseSessionParams,
-        line_items: [buildInlinePriceLineItem()],
-      });
-    }
-
+  private async createPricedSubscriptionSession(
+    baseParams: Stripe.Checkout.SessionCreateParams,
+    normalizedPrice: string,
+  ): Promise<Stripe.Checkout.Session> {
     try {
       return await this.stripe.checkout.sessions.create({
-        ...baseSessionParams,
-        line_items: [
-          {
-            price: normalizedPrice,
-            quantity: 1,
-          },
-        ],
+        ...baseParams,
+        line_items: [{ price: normalizedPrice, quantity: 1 }],
       });
     } catch (err: any) {
       const msg = String(err?.message || '').toLowerCase();
@@ -137,32 +147,38 @@ export class StripeService {
         this.logger.warn(
           `El priceId '${normalizedPrice}' no existe en Stripe; creando sesión Checkout con price_data dinámico ($19/mes).`,
         );
-        return this.stripe.checkout.sessions.create({
-          ...baseSessionParams,
-          line_items: [buildInlinePriceLineItem()],
-        });
+        return this.createDynamicSubscriptionSession(baseParams);
       }
       throw err;
     }
   }
 
-  /**
-   * Crea una sesión en Stripe Customer Portal para que el usuario gestione su suscripción.
-   */
-  async createPortalSession(
-    customerId: string,
-    returnUrl: string,
-  ): Promise<Stripe.BillingPortal.Session> {
-    return this.stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: returnUrl,
+  private createDynamicSubscriptionSession(
+    baseParams: Stripe.Checkout.SessionCreateParams,
+  ): Promise<Stripe.Checkout.Session> {
+    return this.stripe.checkout.sessions.create({
+      ...baseParams,
+      line_items: [this.buildDynamicPriceLineItem()],
     });
   }
 
-  /**
-   * Crea una sesión de Stripe Checkout en modo un solo pago (`payment`) para insumos físicos.
-   */
-  async createPaymentCheckoutSession(params: {
+  private buildDynamicPriceLineItem(): Stripe.Checkout.SessionCreateParams.LineItem {
+    return {
+      price_data: {
+        currency: 'usd',
+        unit_amount: 1900,
+        recurring: { interval: 'month' },
+        product_data: {
+          name: 'Plan PRO — QR Maker SaaS',
+          description:
+            'Hasta 50 enlaces dinámicos activos, QR personalizado y analíticas de 365 días.',
+        },
+      },
+      quantity: 1,
+    };
+  }
+
+  private buildPaymentSessionParams(params: {
     customerId?: string;
     customerEmail?: string;
     orderId: string;
@@ -170,7 +186,7 @@ export class StripeService {
     lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
     successUrl: string;
     cancelUrl: string;
-  }): Promise<Stripe.Checkout.Session> {
+  }): Stripe.Checkout.SessionCreateParams {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'payment',
       line_items: params.lineItems,
@@ -188,18 +204,6 @@ export class StripeService {
       sessionParams.customer_email = params.customerEmail;
     }
 
-    return this.stripe.checkout.sessions.create(sessionParams);
-  }
-
-  /**
-   * Valida criptográficamente la firma HMAC del webhook recibido y construye el objeto `Stripe.Event`.
-   */
-  constructWebhookEvent(
-    payload: Buffer | string,
-    signature: string,
-    secret?: string,
-  ): Stripe.Event {
-    const webhookSecret = secret || this.webhookSecret;
-    return this.stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    return sessionParams;
   }
 }
