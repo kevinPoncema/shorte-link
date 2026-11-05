@@ -28,7 +28,7 @@ export class UsersService {
     @Optional()
     @Inject(PLAN_REPOSITORY)
     private readonly planRepository?: IPlanRepository,
-  ) {}
+  ) { }
 
   /**
    * Obtiene la entidad de usuario por su identificador UUID.

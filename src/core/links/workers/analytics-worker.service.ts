@@ -6,8 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CacheService } from '../../cache/cache.service';
-import { ClickQueuePayload } from '../interfaces/click-event.interface';
+import { CacheService, ClickQueuePayload } from '../../cache/cache.service';
 import {
   CreateLinkEventRecord,
   ILinkEventRepository,
@@ -45,7 +44,7 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
     @Inject(LINK_EVENT_REPOSITORY)
     private readonly linkEventRepository: ILinkEventRepository,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   onModuleInit(): void {
     const isEnabled =
@@ -79,7 +78,6 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       this.timer = null;
     }
 
-    // Flush de apagado limpio: vaciar eventos restantes en Redis antes del cierre
     try {
       await this.processBatch();
     } catch (err: unknown) {
@@ -89,9 +87,7 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Ciclo periódico ejecutado por el timer evitando solapamiento concurrente.
-   */
+
   async runCycle(): Promise<number> {
     if (this.isProcessing) {
       this.logger.debug(
@@ -113,10 +109,6 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       this.isProcessing = false;
     }
   }
-
-  // ===========================================================================
-  // Orquestador Principal (Batch Ingestion Orchestrator)
-  // ===========================================================================
 
   /**
    * **Orquestador de Consumo y Descarga de Métricas a PostgreSQL:**
@@ -154,24 +146,7 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       return 0;
     }
 
-    try {
-      await this.persistBatch(recordsToInsert);
-    } catch (err: unknown) {
-      this.logger.error(
-        `Failed to persist ${recordsToInsert.length} click events in PostgreSQL: ${(err as Error).message}. Re-enqueueing into Redis to prevent data loss.`,
-        (err as Error).stack,
-      );
-      try {
-        if (typeof this.cacheService.reEnqueueClickEventsBatch === 'function') {
-          await this.cacheService.reEnqueueClickEventsBatch(rawEvents);
-        }
-      } catch (reEnqueueErr: unknown) {
-        this.logger.error(
-          `Critical error: Failed to re-enqueue click events into Redis: ${(reEnqueueErr as Error).message}`,
-        );
-      }
-      throw err;
-    }
+    await this.persistBatch(recordsToInsert);
 
     this.logger.log(
       `Flushed ${recordsToInsert.length} click events from Redis RAM into PostgreSQL link_events.`,
@@ -180,9 +155,6 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
     return recordsToInsert.length;
   }
 
-  // ===========================================================================
-  // Funciones Auxiliares de Dominio (Single Responsibility Principle)
-  // ===========================================================================
 
   /**
    * Extrae en lote hasta `batchSize` eventos del final de la cola Redis.
@@ -279,20 +251,23 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       return 'Others';
     }
 
-    switch (true) {
-      case /iPhone|iPad|iPod/i.test(userAgent):
-        return 'iOS';
-      case /Android/i.test(userAgent):
-        return 'Android';
-      case /Windows NT/i.test(userAgent):
-        return 'Windows';
-      case /Mac OS X|Macintosh/i.test(userAgent):
-        return 'macOS';
-      case /Linux/i.test(userAgent):
-        return 'Linux';
-      default:
-        return 'Others';
+    if (/iPhone|iPad|iPod/i.test(userAgent)) {
+      return 'iOS';
     }
+    if (/Android/i.test(userAgent)) {
+      return 'Android';
+    }
+    if (/Windows NT/i.test(userAgent)) {
+      return 'Windows';
+    }
+    if (/Mac OS X|Macintosh/i.test(userAgent)) {
+      return 'macOS';
+    }
+    if (/Linux/i.test(userAgent)) {
+      return 'Linux';
+    }
+
+    return 'Others';
   }
 
   /**
@@ -303,24 +278,26 @@ export class AnalyticsWorkerService implements OnModuleInit, OnModuleDestroy {
       return 'Others';
     }
 
-    switch (true) {
-      case /Version\/.*Mobile.*Safari|iPhone.*Safari|iPad.*Safari/i.test(
-        userAgent,
-      ):
-        return 'Mobile Safari';
-      case /Chrome\/.*Mobile|CriOS/i.test(userAgent):
-        return 'Chrome Mobile';
-      case /Edg\/|EdgA\/|Edge\//i.test(userAgent):
-        return 'Edge';
-      case /Firefox\/|FxiOS\//i.test(userAgent):
-        return 'Firefox';
-      case /Chrome\/|Chromium\//i.test(userAgent):
-        return 'Chrome';
-      case /Safari\//i.test(userAgent) && !/Chrome/i.test(userAgent):
-        return 'Safari';
-      default:
-        return 'Others';
+    if (/Version\/.*Mobile.*Safari|iPhone.*Safari|iPad.*Safari/i.test(userAgent)) {
+      return 'Mobile Safari';
     }
+    if (/Chrome\/.*Mobile|CriOS/i.test(userAgent)) {
+      return 'Chrome Mobile';
+    }
+    if (/Edg\/|EdgA\/|Edge\//i.test(userAgent)) {
+      return 'Edge';
+    }
+    if (/Firefox\/|FxiOS\//i.test(userAgent)) {
+      return 'Firefox';
+    }
+    if (/Chrome\/|Chromium\//i.test(userAgent)) {
+      return 'Chrome';
+    }
+    if (/Safari\//i.test(userAgent) && !/Chrome/i.test(userAgent)) {
+      return 'Safari';
+    }
+
+    return 'Others';
   }
 
   /**

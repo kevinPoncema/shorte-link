@@ -11,8 +11,6 @@ function lookupGeoIp(ip: string): geoipModule.Lookup | null {
     if (typeof geo.lookup === 'function') {
       return geo.lookup(ip);
     }
-    // Fallback dinámico
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const requiredGeo = require('geoip-lite');
     return requiredGeo.lookup ? requiredGeo.lookup(ip) : null;
   } catch {
@@ -20,9 +18,7 @@ function lookupGeoIp(ip: string): geoipModule.Lookup | null {
   }
 }
 
-/**
- * Cabeceras comunes enviadas por CDNs y proxies inversos para el código de país ISO-3166-1 alpha-2.
- */
+
 const COUNTRY_HEADERS = [
   'cf-ipcountry', // Cloudflare
   'x-country-code', // Nginx con módulo GeoIP / proxies estándar
@@ -168,10 +164,8 @@ export function resolveVisitorCountry(
     }
   }
 
-  // 2. Extraer la IP cliente real
   const clientIp = extractClientIp(headers, rawIp);
 
-  // 3. Si la IP es privada o localhost, aplicar fallback de desarrollo
   if (isPrivateOrLocalIp(clientIp)) {
     if (isValidCountryCode(fallbackCountry)) {
       return fallbackCountry!.toUpperCase();
@@ -179,7 +173,6 @@ export function resolveVisitorCountry(
     return null;
   }
 
-  // 4. Prioridad 2: Consulta offline a base de datos GeoIP (geoip-lite)
   try {
     const lookupResult = lookupGeoIp(clientIp);
     if (lookupResult && isValidCountryCode(lookupResult.country)) {
@@ -189,7 +182,6 @@ export function resolveVisitorCountry(
     // Si geoip falla por formato atípico de IP, continua con fallback seguro
   }
 
-  // 5. Fallback final si la IP pública no está en la base MaxMind
   if (isValidCountryCode(fallbackCountry)) {
     return fallbackCountry!.toUpperCase();
   }

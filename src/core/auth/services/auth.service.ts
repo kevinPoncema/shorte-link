@@ -44,7 +44,7 @@ export class AuthService {
     private readonly planRepository: IPlanRepository,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   /**
    * **Orquestador de Registro de Usuario (`POST /auth/register`):**
@@ -103,9 +103,6 @@ export class AuthService {
     });
   }
 
-  // ===========================================================================
-  // Funciones Auxiliares de Dominio (Single Responsibility Principle)
-  // ===========================================================================
 
   /**
    * Normaliza un correo electrónico recortando espacios y convirtiendo a minúsculas.
