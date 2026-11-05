@@ -34,6 +34,8 @@ npm test --prefix frontend   # Pruebas unitarias/integración del frontend (Vite
 
 ## Documentación
 
+- [Requerimientos Funcionales y No Funcionales (SRS)](docs/requirements.md)
+- [Guía de Producto y Brief para Diseñadores UI/UX](docs/product-and-ui-brief.md)
 - [Arquitectura (Data Plane & Control Plane)](docs/architecture.md)
 - [Esquema de Base de Datos en UML y Redis](docs/database.md)
 - [Módulos y Patrón Strategy](docs/modules.md)

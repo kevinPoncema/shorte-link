@@ -23,8 +23,11 @@ flowchart TD
 | Módulo | Directorio | Responsabilidad | Exporta |
 | :--- | :--- | :--- | :--- |
 | **`PlansModule`** | `src/plans/` | Motor en memoria de cuotas (`PlanStrategy`), siembra automática idempotente del catálogo `plans` (`OnModuleInit`) y repositorio `PLAN_REPOSITORY`. | `PlanContextService`, `PLAN_REPOSITORY`, `TypeOrmModule` |
-| **`CoreModule`** | `src/core/` | Orquestadores de negocio (`AuthService`, `UsersService`, `LinksService`, `LinkStatsService`, `AnalyticsWorkerService`), repositorios de dominio (`USER_REPOSITORY`, `LINK_REPOSITORY`, `LINK_EVENT_REPOSITORY`), `CacheService` (`ioredis`) y `RedirectController` (`/:shortCode`). | `USER_REPOSITORY`, `LINK_REPOSITORY`, `LINK_EVENT_REPOSITORY`, `JwtAuthGuard`, `JwtModule`, `CacheService`, `AuthService`, `UsersService`, `LinksService`, `LinkStatsService`, `AnalyticsWorkerService`, `TypeOrmModule` |
-| **`BillingModule`** | `src/billing/` | Orquestador `BillingService`, wrapper `StripeService`, repositorios `SUBSCRIPTION_REPOSITORY` y `ORDER_REPOSITORY`, suscripciones SaaS, Webhooks HMAC y pedidos físicos QR/NFC bajo flag booleano (`ENABLE_PHYSICAL_ORDERS`). | `BillingService`, `StripeService`, `SUBSCRIPTION_REPOSITORY`, `ORDER_REPOSITORY`, `TypeOrmModule` |
+| **`CoreModule`** | `src/core/` | Módulo agregador que orquesta los sub-dominios desacoplados: `AuthModule`, `LinksModule` y `CacheModule`, preservando compatibilidad total hacia atrás. | `AuthModule`, `LinksModule`, `CacheModule` |
+| **`AuthModule`** | `src/core/auth/` | Autenticación y gestión de usuarios (`AuthService`, `UsersService`), guardias JWT (`JwtAuthGuard`) y repositorio `USER_REPOSITORY`. | `USER_REPOSITORY`, `AuthService`, `UsersService`, `JwtAuthGuard`, `JwtModule`, `TypeOrmModule` |
+| **`LinksModule`** | `src/core/links/` | Gestión de enlaces y QR dinámicos (`LinksService`), analíticas (`LinkStatsService`), worker en segundo plano (`AnalyticsWorkerService`), Fast-Path (`RedirectController`) y repositorios `LINK_REPOSITORY` y `LINK_EVENT_REPOSITORY`. | `LINK_REPOSITORY`, `LINK_EVENT_REPOSITORY`, `LinksService`, `LinkStatsService`, `AnalyticsWorkerService`, `TypeOrmModule` |
+| **`CacheModule`** | `src/core/cache/` | Conexión Redis (`ioredis`), `CacheService` y cola de eventos de clic (`ClickQueueService`). | `REDIS_CLIENT`, `CacheService`, `ClickQueueService` |
+| **`BillingModule`** | `src/billing/` | Orquestador `BillingService`, dominio de hardware `PhysicalOrderService`, procesamiento asíncrono `StripeWebhookService`, wrapper `StripeService`, repositorios `SUBSCRIPTION_REPOSITORY` y `ORDER_REPOSITORY`. | `BillingService`, `PhysicalOrderService`, `StripeWebhookService`, `StripeService`, `SUBSCRIPTION_REPOSITORY`, `ORDER_REPOSITORY`, `TypeOrmModule` |
 
 ---
 
@@ -110,6 +113,18 @@ Cada método público de los servicios actúa como un **Orquestador declarativo*
   4. `hashPassword(dto.password)`
   5. `persistNewUser(normalizedEmail, passwordHash)`
   6. `buildAuthSessionResponse(savedUser)`
+* **`PhysicalOrderService.createPhysicalOrderCheckout` (Orquestador de Pedidos Físicos):**
+  1. `assertPhysicalOrdersEnabled()`
+  2. `assertCheckoutUrlsProvided(dto.successUrl, dto.cancelUrl)`
+  3. `validateLinkOwnershipForItems(user.sub, dto.items)`
+  4. `buildOrderAndLineItems(dto.items, true)` (centraliza cálculo de totales, validación de tipos y armado de line items)
+  5. `persistOrder(user.sub, totalAmount, dto.shippingAddress, orderItems, 'pending', 'unfulfilled')`
+  6. `resolveStripeCustomerId(user.sub)`
+  7. `executeStripeOrderCheckout(...)` con fallback transparente a sandbox si se usan llaves placeholder
+* **`BillingService.createSubscriptionCheckout` (Orquestador de Suscripción):**
+  1. `resolvePriceId(dto.priceId)`
+  2. `executeStripeSubscriptionCheckout(user, priceId, dto)`
+  3. Fallback degradado a sandbox interactivo ante llaves de desarrollo (`handleSandboxSubscriptionFallback`)
 
 ---
 
@@ -183,7 +198,9 @@ classDiagram
 ```text
 src/
 ├── core/
+│   ├── core.module.ts      # Módulo agregador raíz de la capa core
 │   ├── auth/
+│   │   ├── auth.module.ts  # Módulo de autenticación y usuarios
 │   │   ├── controllers/    # auth.controller.ts (/auth/register, /auth/login, /auth/me)
 │   │   ├── services/       # auth.service.ts, users.service.ts (Orquestadores sin TypeORM)
 │   │   ├── repositories/   # typeorm-user.repository.ts (Adaptador ORM)
@@ -191,24 +208,31 @@ src/
 │   │   ├── guards/         # jwt-auth.guard.ts
 │   │   └── dto/            # register.dto.ts, login.dto.ts, auth-response.dto.ts
 │   ├── links/
+│   │   ├── links.module.ts # Módulo de enlaces, QR, stats y workers
 │   │   ├── controllers/    # links.controller.ts, redirect.controller.ts
 │   │   ├── services/       # links.service.ts, link-stats.service.ts
-│   │   ├── workers/        # analytics-worker.service.ts
+│   │   ├── workers/        # analytics-worker.service.ts (Ingesta en lote y vaciado de RAM)
 │   │   ├── helpers/        # country-resolver.helper.ts
 │   │   ├── repositories/   # typeorm-link.repository.ts, typeorm-link-event.repository.ts
 │   │   ├── interfaces/     # link-repository.interface.ts, link-event-repository.interface.ts
 │   │   └── dto/            # create-link.dto.ts, update-link.dto.ts, qr-config.dto.ts, link-stats.dto.ts
-│   ├── cache/              # cache.service.ts (ioredis)
+│   ├── cache/
+│   │   ├── cache.module.ts # Módulo de infraestructura Redis
+│   │   ├── cache.service.ts
+│   │   └── click-queue.service.ts
 │   └── models/             # user.entity.ts, link.entity.ts, link-event.entity.ts
 ├── plans/
+│   ├── plans.module.ts
 │   ├── interfaces/         # plan-strategy.interface.ts, plan-repository.interface.ts
 │   ├── repositories/       # typeorm-plan.repository.ts (Adaptador ORM)
-│   ├── strategies/         # starter-plan.strategy.ts, pro-plan.strategy.ts
-│   ├── services/           # plan-context.service.ts (Strategy Map O(1) + OnModuleInit seeder)
+│   ├── strategies/         # starter-plan.strategy.ts, pro-plan.strategy.ts, base-plan.strategy.ts
+│   ├── services/           # plan-context.service.ts (Strategy Map O(1))
+│   ├── seeders/            # plan.seeder.ts (Siembra idempotente OnModuleInit)
 │   └── models/             # plan.entity.ts
 └── billing/
+    ├── billing.module.ts
     ├── controllers/        # billing.controller.ts
-    ├── services/           # billing.service.ts, stripe.service.ts
+    ├── services/           # billing.service.ts, physical-order.service.ts, stripe-webhook.service.ts, stripe.service.ts
     ├── repositories/       # typeorm-subscription.repository.ts, typeorm-order.repository.ts
     ├── interfaces/         # subscription-repository.interface.ts, order-repository.interface.ts
     ├── dto/                # checkout, portal, subscription, physical-order, complete-sandbox-checkout y toggle-physical-orders DTOs
