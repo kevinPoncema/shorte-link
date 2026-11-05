@@ -15,7 +15,7 @@ export const CLICKS_QUEUE_KEY = 'queue:clicks';
 export class ClickQueueService {
   private readonly logger = new Logger(ClickQueueService.name);
 
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) { }
 
   /**
    * Inserta un evento analítico al inicio de la cola Redis (`LPUSH queue:clicks`).
@@ -51,7 +51,6 @@ export class ClickQueueService {
     }
 
     try {
-      // Intento con RPOP multi-elemento nativo en Redis 6.2+
       const raw = await (this.redis as any).rpop(CLICKS_QUEUE_KEY, batchSize);
       if (!raw) {
         return [];
@@ -59,7 +58,6 @@ export class ClickQueueService {
       const rawItems: string[] = Array.isArray(raw) ? raw : [raw];
       return this.parseRawQueueItems(rawItems);
     } catch {
-      // Fallback con pipeline para versiones anteriores de Redis o entornos de mock
       const pipeline = this.redis.pipeline();
       for (let i = 0; i < batchSize; i++) {
         pipeline.rpop(CLICKS_QUEUE_KEY);

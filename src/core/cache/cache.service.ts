@@ -22,7 +22,6 @@ export const REDIRECT_KEY_PREFIX = 'r:';
 
 export const DEFAULT_REDIRECT_CACHE_TTL_SECONDS = 86400; // 24 horas
 
-// Re-exportaciones de compatibilidad hacia atrás
 export {
   ClickEventPayload,
   ClickQueuePayload,
@@ -41,7 +40,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @Optional() private readonly clickQueueService?: ClickQueueService,
-  ) {}
+  ) { }
 
   /**
    * Intenta configurar `maxmemory-policy allkeys-lru` en tiempo de arranque.
@@ -109,10 +108,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async invalidateRedirectTarget(shortCode: string): Promise<void> {
     await this.redis.del(this.buildRedirectKey(shortCode));
   }
-
-  // ===========================================================================
-  // Métodos de cola (Delegados a ClickQueueService para compatibilidad hacia atrás)
-  // ===========================================================================
 
   /**
    * Inserta un evento analítico al inicio de la cola Redis (`LPUSH queue:clicks`).
