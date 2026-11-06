@@ -27,17 +27,37 @@ async function bootstrap(): Promise<void> {
   const configService = app.get(ConfigService);
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const corsOrigin = configService.get<string>('CORS_ORIGIN');
-  const resolvedOrigin =
-    corsOrigin && corsOrigin.trim().length > 0
-      ? corsOrigin.includes(',')
-        ? corsOrigin.split(',').map((origin) => origin.trim())
-        : corsOrigin.trim()
-      : nodeEnv === 'production'
-        ? false
-        : true;
+  const allowedOriginsList =
+    corsOrigin && corsOrigin.trim().length > 0 && corsOrigin.trim() !== '*'
+      ? corsOrigin
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter((origin) => origin.length > 0)
+      : null;
 
   app.enableCors({
-    origin: resolvedOrigin,
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow: boolean | string) => void,
+    ) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOriginsList && allowedOriginsList.length > 0) {
+        if (allowedOriginsList.includes(origin)) {
+          return callback(null, origin);
+        }
+      }
+
+      const isLocalhost =
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      if (isLocalhost || corsOrigin === '*' || nodeEnv !== 'production') {
+        return callback(null, origin);
+      }
+
+      return callback(null, false);
+    },
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
@@ -45,6 +65,15 @@ async function bootstrap(): Promise<void> {
       'Accept',
       'Origin',
       'X-Requested-With',
+      'Cache-Control',
+      'Pragma',
+      'stripe-signature',
+    ],
+    exposedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Location',
+      'Content-Disposition',
     ],
     credentials: true,
   });

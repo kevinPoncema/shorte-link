@@ -104,10 +104,20 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
         cleanTarget = `https://${cleanTarget}`;
       }
 
-      const qrConfig = {
-        foregroundColor: activePalette.fg,
-        backgroundColor: activePalette.bg,
-      };
+      // Solo adjuntar personalización de color QR si el usuario posee plan PRO (contrato PlanStrategy)
+      const qrConfig = isPro
+        ? {
+            foregroundColor: activePalette.fg,
+            backgroundColor: activePalette.bg,
+          }
+        : undefined;
+
+      // Normalizar slug para validación OpenAPI: ^[A-Za-z0-9]{6,16}$
+      const alphanumericSlug = slug.replace(/[^A-Za-z0-9]/g, '');
+      const validShortCode =
+        alphanumericSlug.length >= 6 && alphanumericSlug.length <= 16
+          ? alphanumericSlug
+          : undefined;
 
       let savedLink: LinkItem;
 
@@ -115,14 +125,15 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
         savedLink = await api.updateLink(linkToEdit.id, {
           name: name.trim(),
           targetUrl: cleanTarget,
-          qrConfig,
+          ...(qrConfig ? { qrConfig } : {}),
         });
         onShowToast('Enlace dinámico actualizado en PostgreSQL y Redis', 'success');
       } else {
         savedLink = await api.createLink({
           name: name.trim(),
           targetUrl: cleanTarget,
-          qrConfig,
+          ...(validShortCode ? { shortCode: validShortCode } : {}),
+          ...(qrConfig ? { qrConfig } : {}),
         });
         onShowToast('¡Enlace dinámico creado y precalentado en RAM!', 'success');
       }

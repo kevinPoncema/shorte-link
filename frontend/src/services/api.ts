@@ -20,6 +20,7 @@ export interface LinkItem {
   shortCode: string;
   targetUrl: string;
   isActive: boolean;
+  customDomain?: string | null;
   qrConfig?: QrConfig;
   userId: string;
   createdAt: string;
@@ -293,12 +294,18 @@ class ApiService {
   async createLink(payload: {
     targetUrl: string;
     name?: string;
+    shortCode?: string;
+    customDomain?: string;
     qrConfig?: QrConfig;
   }): Promise<LinkItem> {
     return this.request<LinkItem>('/links', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  }
+
+  getQrCodeUrl(id: string, format: 'png' | 'svg' = 'svg'): string {
+    return `${API_BASE_URL}/links/${id}/qr?format=${format}`;
   }
 
   async updateLink(

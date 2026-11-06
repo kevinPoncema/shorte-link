@@ -51,6 +51,7 @@ services:
       PORT: 3000
       HOST: 0.0.0.0
       NODE_ENV: production
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       DB_HOST: postgres
       DB_PORT: 5432

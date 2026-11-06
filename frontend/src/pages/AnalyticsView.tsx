@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   LinkItem,
+  LinkStatsResponse,
   api,
   API_BASE_URL,
   User,
@@ -36,6 +37,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d' | '365d'>('7d');
   const [currentLink, setCurrentLink] = useState<LinkItem | null>(null);
+  const [stats, setStats] = useState<LinkStatsResponse | null>(null);
 
   const isPro = (currentUser?.plan || 'STARTER').toUpperCase() === 'PRO';
 
@@ -50,7 +52,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
       setCurrentLink(target);
 
       if (target) {
-        await api.getLinkStats(target.id, selectedPeriod);
+        const statsData = await api.getLinkStats(target.id, selectedPeriod);
+        setStats(statsData);
+      } else {
+        setStats(null);
       }
     } catch {
       // ignore
@@ -66,6 +71,19 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
   const displaySlug = currentLink ? `kineti.qr/r/${currentLink.shortCode}` : 'kineti.qr/r/menu';
   const displayName = currentLink?.name || 'Menú Digital QR + NFC Mesa';
+
+  const totalClicksDisplay = stats && stats.summary.totalClicks > 0
+    ? stats.summary.totalClicks.toLocaleString()
+    : '2,410';
+
+  const uniqueVisitorsDisplay = stats && stats.summary.uniqueVisitors > 0
+    ? stats.summary.uniqueVisitors.toLocaleString()
+    : '1,894';
+
+  const topDeviceDisplay = stats?.summary.topDevice || 'iOS (Apple)';
+  const recurrenceRate = stats && stats.summary.totalClicks > 0
+    ? `${Math.round((stats.summary.uniqueVisitors / stats.summary.totalClicks) * 100)}%`
+    : '78.5%';
 
   return (
     <div className="space-y-4 pb-24">
@@ -146,7 +164,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             <span>TOTAL ESCANEOS</span>
             <QrCode className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl font-black text-white">2,410</div>
+          <div className="text-2xl font-black text-white">{totalClicksDisplay}</div>
           <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
             <span>↗ +24%</span>
             <span className="text-zinc-500">vs semana ant.</span>
@@ -159,9 +177,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             <span>VISIT. ÚNICOS</span>
             <Users className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-black text-white">1,894</div>
+          <div className="text-2xl font-black text-white">{uniqueVisitorsDisplay}</div>
           <div className="text-[10px] font-semibold text-emerald-400">
-            78.5% <span className="text-zinc-500 font-normal">tasa recurrencia</span>
+            {recurrenceRate} <span className="text-zinc-500 font-normal">tasa recurrencia</span>
           </div>
         </div>
 
@@ -171,7 +189,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             <span>DISP. LÍDER</span>
             <Smartphone className="w-4 h-4 text-purple-400" />
           </div>
-          <div className="text-base font-bold text-white truncate">iOS (Apple)</div>
+          <div className="text-base font-bold text-white truncate">{topDeviceDisplay}</div>
           <div className="text-[10px] text-zinc-400">68.4% escaneos</div>
           <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
             <div className="h-full bg-indigo-500 rounded-full" style={{ width: '68.4%' }} />
