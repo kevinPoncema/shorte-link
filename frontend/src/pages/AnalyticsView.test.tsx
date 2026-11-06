@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { AnalyticsView } from './AnalyticsView';
 import { api, User } from '../services/api';
 
@@ -93,5 +93,55 @@ describe('AnalyticsView Component', () => {
 
     expect(await screen.findByText(/No tienes enlaces creados todavía/i)).toBeInTheDocument();
     expect(screen.getByText('Ir al Editor QR')).toBeInTheDocument();
+  });
+
+  it('filters selector links by name in real-time', async () => {
+    (api.getLinks as any).mockResolvedValue([
+      {
+        id: 'link-1',
+        name: 'Menú Digital QR + NFC Mesa',
+        shortCode: 'menu',
+        targetUrl: 'https://rest.com/menu',
+        isActive: true,
+      },
+      {
+        id: 'link-2',
+        name: 'Campaña Black Friday 2026',
+        shortCode: 'bf2026',
+        targetUrl: 'https://tienda.com/bf',
+        isActive: true,
+      },
+      {
+        id: 'link-3',
+        name: 'Redirección Wi-Fi Hotel',
+        shortCode: 'wifi-hotel',
+        targetUrl: 'https://hotel.com/wifi',
+        isActive: false,
+      },
+    ]);
+
+    render(
+      <AnalyticsView
+        currentUser={mockUser}
+        linkId="link-1"
+        onBack={vi.fn()}
+        onOpenUpgradeModal={vi.fn()}
+        onShowToast={vi.fn()}
+      />
+    );
+
+    // Verify search input is rendered
+    const filterInput = await screen.findByPlaceholderText('Filtrar por nombre...');
+    expect(filterInput).toBeInTheDocument();
+
+    const selector = screen.getByLabelText('Seleccionar enlace analizado') as HTMLSelectElement;
+    expect(selector.options).toHaveLength(3);
+
+    // Type "Friday" into the name filter
+    fireEvent.change(filterInput, { target: { value: 'Friday' } });
+
+    // Selector should now only contain the matching link
+    expect(selector.options).toHaveLength(1);
+    expect(selector.options[0].text).toBe('Campaña Black Friday 2026');
   });
 });

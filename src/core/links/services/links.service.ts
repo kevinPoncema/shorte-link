@@ -20,6 +20,8 @@ import { CacheService } from '../../cache/cache.service';
 import { ClickEventPayload } from '../interfaces/click-event.interface';
 import { Link, QrConfig } from '../../models/link.entity';
 import { CreateLinkDto } from '../dto/create-link.dto';
+import { FindLinksQueryDto } from '../dto/find-links-query.dto';
+import { PaginatedLinksResponseDto } from '../dto/paginated-links-response.dto';
 import { UpdateLinkDto } from '../dto/update-link.dto';
 import {
   ILinkRepository,
@@ -110,6 +112,9 @@ export class LinksService {
    * 5. Precalienta la caché Redis (`SET r:{shortCode}`).
    */
   async createLink(user: JwtPayload, dto: CreateLinkDto): Promise<Link> {
+    if (dto.name !== undefined && dto.name.trim().length === 0) {
+      throw new BadRequestException('El nombre o etiqueta de referencia no puede estar vacío');
+    }
     const strategy = await this.resolveEffectivePlanStrategy(user);
     await this.enforceCreationQuotas(user.sub, strategy, dto);
 
@@ -121,11 +126,123 @@ export class LinksService {
   }
 
   /**
-   * **Orquestador de Listado de Enlaces (`GET /links`):**
-   * Recupera todos los enlaces pertenecientes al usuario autenticado en orden descendente.
+   * **Orquestador de Listado de Enlaces con Paginación y Filtros Opcionales (`GET /links`):**
+   * Coordina secuencialmente y bajo principios SOLID (SRP, DIP, OCP) las funciones auxiliares de:
+   * 1. `resolvePaginationParameters`: Normaliza y acota los parámetros de paginación (`page`, `limit`, `skip`, `take`).
+   * 2. `buildLinkFilterCriteria`: Sanitiza los filtros por nombre y término de búsqueda.
+   * 3. `executeFetchLinks`: Consulta el repositorio de dominio abstrayendo TypeORM (`findAndCountByUser`).
+   * 4. `assembleLinksResponse`: Ensambla el contrato de salida según modo (paginado con metadatos o retrocompatible).
    */
-  async findAllByUser(userId: string): Promise<Link[]> {
-    return this.linkRepository.findAllByUser(userId);
+  async findAllByUser(
+    userId: string,
+    query?: FindLinksQueryDto,
+  ): Promise<PaginatedLinksResponseDto | Link[]> {
+    const paginationWindow = this.resolvePaginationParameters(query);
+    const filterCriteria = this.buildLinkFilterCriteria(query);
+    const { items, total } = await this.executeFetchLinks(
+      userId,
+      filterCriteria,
+      paginationWindow,
+    );
+    return this.assembleLinksResponse(items, total, paginationWindow);
+  }
+
+  /**
+   * Auxiliar Orquestador 1 (SRP): Normaliza la ventana de paginación asegurando límites válidos.
+   */
+  private resolvePaginationParameters(query?: FindLinksQueryDto): {
+    isPaginated: boolean;
+    page: number;
+    limit: number;
+    skip?: number;
+    take?: number;
+  } {
+    const isPaginated =
+      query?.page !== undefined || query?.limit !== undefined;
+
+    const page = Math.max(1, Number(query?.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query?.limit) || 10));
+    const skip = isPaginated ? (page - 1) * limit : undefined;
+    const take = isPaginated ? limit : undefined;
+
+    return {
+      isPaginated,
+      page,
+      limit,
+      skip,
+      take,
+    };
+  }
+
+  /**
+   * Auxiliar Orquestador 2 (SRP): Sanitiza y prepara los criterios de filtrado por nombre y texto.
+   */
+  private buildLinkFilterCriteria(query?: FindLinksQueryDto): {
+    name?: string;
+    search?: string;
+  } {
+    const trimmedName = query?.name?.trim();
+    const trimmedSearch = query?.search?.trim();
+
+    return {
+      name: trimmedName && trimmedName.length > 0 ? trimmedName : undefined,
+      search: trimmedSearch && trimmedSearch.length > 0 ? trimmedSearch : undefined,
+    };
+  }
+
+  /**
+   * Auxiliar Orquestador 3 (SRP / DIP): Ejecuta la consulta relacional sobre el contrato de repositorio.
+   */
+  private async executeFetchLinks(
+    userId: string,
+    filters: { name?: string; search?: string },
+    window: { isPaginated: boolean; skip?: number; take?: number },
+  ): Promise<{ items: Link[]; total: number }> {
+    if (!window.isPaginated && !filters.name && !filters.search) {
+      const items = await this.linkRepository.findAllByUser(userId);
+      return { items, total: items.length };
+    }
+
+    const [items, total] = await this.linkRepository.findAndCountByUser(
+      userId,
+      {
+        skip: window.skip,
+        take: window.take,
+        name: filters.name,
+        search: filters.search,
+      },
+    );
+
+    return { items, total };
+  }
+
+  /**
+   * Auxiliar Orquestador 4 (SRP): Ensambla la estructura de respuesta (paginada con meta o plano retrocompatible).
+   */
+  private assembleLinksResponse(
+    items: Link[],
+    total: number,
+    window: { isPaginated: boolean; page: number; limit: number },
+  ): PaginatedLinksResponseDto | Link[] {
+    if (!window.isPaginated) {
+      return items;
+    }
+
+    const totalPages = Math.max(1, Math.ceil(total / window.limit));
+    const hasNext = window.page < totalPages;
+    const hasPrev = window.page > 1;
+
+    return {
+      data: items,
+      meta: {
+        total,
+        page: window.page,
+        limit: window.limit,
+        totalPages,
+        hasNext,
+        hasPrev,
+      },
+    };
   }
 
   /**
@@ -449,7 +566,10 @@ export class LinksService {
     }
 
     if (dto.name !== undefined) {
-      link.name = this.normalizeLinkName(dto.name);
+      if (dto.name.trim().length === 0) {
+        throw new BadRequestException('El nombre o etiqueta de referencia no puede estar vacío');
+      }
+      link.name = dto.name.trim();
     }
 
     if (dto.targetUrl !== undefined) {

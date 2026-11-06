@@ -22,6 +22,9 @@ import {
   Utensils,
   Wifi,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import { QuotaWarningModal } from '../components/modals/QuotaWarningModal';
 
@@ -47,9 +50,13 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingUrlId, setEditingUrlId] = useState<string | null>(null);
   const [tempTargetUrl, setTempTargetUrl] = useState('');
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [tempName, setTempName] = useState('');
   const [isQuotaWarningOpen, setIsQuotaWarningOpen] = useState(false);
 
   const isPro = (currentUser?.plan || 'STARTER').toUpperCase() === 'PRO';
@@ -69,6 +76,27 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
       setLinks(data);
     } catch {
       onShowToast('No se pudieron cargar los enlaces', 'error');
+    }
+  };
+
+  const handleStartEditName = (link: LinkItem) => {
+    setEditingNameId(link.id);
+    setTempName(link.name || '');
+  };
+
+  const handleSaveName = async (linkId: string) => {
+    const cleanName = tempName.trim();
+    if (!cleanName) {
+      onShowToast('El Nombre de Referencia es obligatorio', 'error');
+      return;
+    }
+    try {
+      const updated = await api.updateLink(linkId, { name: cleanName });
+      setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
+      setEditingNameId(null);
+      onShowToast('Nombre de referencia actualizado', 'success');
+    } catch (err: any) {
+      onShowToast(err?.message || 'Error al actualizar el nombre', 'error');
     }
   };
 
@@ -131,15 +159,23 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
   };
 
   const filteredLinks = links.filter((link) => {
+    const term = searchQuery.trim().toLowerCase();
     const matchesSearch =
-      (link.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      link.shortCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      link.targetUrl.toLowerCase().includes(searchQuery.toLowerCase());
+      !term ||
+      (link.name || '').toLowerCase().includes(term) ||
+      link.shortCode.toLowerCase().includes(term) ||
+      link.targetUrl.toLowerCase().includes(term);
 
     if (statusFilter === 'active') return matchesSearch && link.isActive;
     if (statusFilter === 'inactive') return matchesSearch && !link.isActive;
     return matchesSearch;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredLinks.length / PAGE_SIZE));
+  const validPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (validPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, filteredLinks.length);
+  const paginatedLinks = filteredLinks.slice(startIndex, endIndex);
 
   return (
     <div className="space-y-4 pb-20">
@@ -222,19 +258,38 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
       {/* 3. Search and Filter Bar */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar enlaces o tags..."
-            className="w-full bg-[#131620] border border-white/5 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Filtrar por nombre, slug o destino..."
+            className="w-full bg-[#131620] border border-white/5 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setCurrentPage(1);
+              }}
+              title="Limpiar búsqueda"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-zinc-500 hover:text-white transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as any);
+            setCurrentPage(1);
+          }}
           className="bg-[#131620] border border-white/5 rounded-xl px-3 py-2 text-xs text-zinc-300 focus:outline-none cursor-pointer"
         >
           <option value="all">Todos</option>
@@ -282,9 +337,16 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
 
       {/* 5. Section Header */}
       <div className="flex items-center justify-between text-xs pt-1">
-        <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-          ENLACES CONFIGURADOS ({filteredLinks.length})
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+            ENLACES CONFIGURADOS ({filteredLinks.length})
+          </span>
+          {filteredLinks.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] text-zinc-400 font-medium">
+              Página {validPage} de {totalPages}
+            </span>
+          )}
+        </div>
         <span className="text-[10px] font-mono text-zinc-500">
           Auto-sync ON
         </span>
@@ -301,7 +363,7 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
             </p>
           </div>
         ) : (
-          filteredLinks.map((link, index) => {
+          paginatedLinks.map((link, index) => {
           const isMenu = index % 2 === 0;
           const displaySlug = `kineti.qr/r/${link.shortCode}`;
           const isMenuOpen = menuOpenId === link.id;
@@ -313,16 +375,54 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
             >
               {/* Card Top: Icon + Title + Switch */}
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
                   <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
                     isMenu ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                   }`}>
                     {isMenu ? <Utensils className="w-5 h-5" /> : <Wifi className="w-5 h-5" />}
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white tracking-tight">
-                      {link.name || `Enlace #${link.shortCode}`}
-                    </h4>
+                  <div className="flex-1 min-w-0">
+                    {editingNameId === link.id ? (
+                      <div className="flex items-center gap-1.5 my-0.5">
+                        <input
+                          type="text"
+                          value={tempName}
+                          onChange={(e) => setTempName(e.target.value)}
+                          placeholder="Nombre obligatorio *"
+                          className="w-full bg-[#0B0D13] border border-indigo-500 rounded px-2 py-0.5 text-xs text-white focus:outline-none"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveName(link.id);
+                            if (e.key === 'Escape') setEditingNameId(null);
+                          }}
+                        />
+                        <button
+                          onClick={() => handleSaveName(link.id)}
+                          className="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-bold shrink-0"
+                        >
+                          OK
+                        </button>
+                        <button
+                          onClick={() => setEditingNameId(null)}
+                          className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] shrink-0"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 group/name">
+                        <h4 className="text-sm font-bold text-white tracking-tight truncate">
+                          {link.name || `Enlace #${link.shortCode}`}
+                        </h4>
+                        <button
+                          onClick={() => handleStartEditName(link)}
+                          title="Editar nombre de referencia (Obligatorio)"
+                          className="opacity-0 group-hover/name:opacity-100 p-0.5 text-zinc-500 hover:text-white transition-opacity"
+                        >
+                          <Pencil className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5 mt-0.5 text-[11px]">
                       <span className="flex items-center gap-1 text-emerald-400 font-medium">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -472,6 +572,16 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
                         <button
                           onClick={() => {
                             setMenuOpenId(null);
+                            handleStartEditName(link);
+                          }}
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-300 hover:bg-white/5 hover:text-white"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Renombrar enlace *</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setMenuOpenId(null);
                             onOrderPhysical(link);
                           }}
                           className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-300 hover:bg-white/5 hover:text-white"
@@ -500,6 +610,57 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
         })
       )}
       </div>
+
+      {/* 6.1 Paginación de 10 enlaces */}
+      {filteredLinks.length > 0 && (
+        <div className="p-3.5 rounded-2xl bg-[#131620] border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-lg">
+          <div className="text-zinc-400 text-[11px] font-medium flex items-center gap-1.5">
+            <span>Mostrando</span>
+            <span className="font-bold text-white">
+              {filteredLinks.length === 0 ? 0 : startIndex + 1} - {endIndex}
+            </span>
+            <span>de</span>
+            <span className="font-bold text-indigo-300">{filteredLinks.length}</span>
+            <span>enlaces</span>
+            <span className="text-zinc-600">•</span>
+            <span className="text-zinc-500 text-[10px]">10 por página</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={validPage <= 1}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 transition-all ${
+                validPage <= 1
+                  ? 'bg-zinc-800/40 text-zinc-600 cursor-not-allowed border border-white/5'
+                  : 'bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-indigo-500/30'
+              }`}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Anterior</span>
+            </button>
+
+            <div className="px-3 py-1 rounded-xl bg-[#0B0D13] border border-white/5 font-mono text-xs text-zinc-300 flex items-center gap-1">
+              <span className="text-white font-bold">{validPage}</span>
+              <span className="text-zinc-500">/</span>
+              <span className="text-zinc-400">{totalPages}</span>
+            </div>
+
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={validPage >= totalPages}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 transition-all ${
+                validPage >= totalPages
+                  ? 'bg-zinc-800/40 text-zinc-600 cursor-not-allowed border border-white/5'
+                  : 'bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-indigo-500/30'
+              }`}
+            >
+              <span>Siguiente</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 7. Paywall Card: Límite Starter alcanzado */}
       {!isPro && (

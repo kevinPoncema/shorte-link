@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, ILike, In, Repository } from 'typeorm';
 import { Link } from '../../models/link.entity';
 import {
   CreateLinkAttributes,
+  FindLinksOptions,
   ILinkRepository,
   RedirectLinkProjection,
 } from '../interfaces/link-repository.interface';
@@ -42,6 +43,26 @@ export class TypeOrmLinkRepository implements ILinkRepository {
     return this.ormRepository.find({
       where: { userId },
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findAndCountByUser(
+    userId: string,
+    options?: FindLinksOptions,
+  ): Promise<[Link[], number]> {
+    const term = (options?.name || options?.search)?.trim();
+    const whereClause: FindOptionsWhere<Link>[] | FindOptionsWhere<Link> = term
+      ? [
+          { userId, name: ILike(`%${term}%`) },
+          { userId, shortCode: ILike(`%${term}%`) },
+        ]
+      : { userId };
+
+    return this.ormRepository.findAndCount({
+      where: whereClause,
+      order: { createdAt: 'DESC' },
+      skip: options?.skip,
+      take: options?.take,
     });
   }
 

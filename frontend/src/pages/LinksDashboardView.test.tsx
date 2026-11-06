@@ -164,4 +164,164 @@ describe('LinksDashboardView Component', () => {
     fireEvent.click(screen.getByText('Desbloquear 50 con Plan PRO'));
     expect(handleUpgrade).toHaveBeenCalled();
   });
+
+  it('paginates links with exactly 10 per page and allows next/previous navigation', async () => {
+    // Generate 15 distinct links
+    const fifteenLinks: LinkItem[] = Array.from({ length: 15 }, (_, i) => ({
+      id: `link-${i + 1}`,
+      name: `Campaña Especial #${i + 1}`,
+      shortCode: `code${i + 1}`,
+      targetUrl: `https://example.com/item-${i + 1}`,
+      isActive: true,
+      userId: 'user-1',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+
+    (api.getLinks as any).mockResolvedValue(fifteenLinks);
+
+    render(
+      <LinksDashboardView
+        currentUser={{ ...mockUser, plan: 'PRO' }}
+        onNavigateToEditor={vi.fn()}
+        onNavigateToAnalytics={vi.fn()}
+        onOpenUpgradeModal={vi.fn()}
+        onShowToast={vi.fn()}
+        onPreviewQr={vi.fn()}
+        onOrderPhysical={vi.fn()}
+      />
+    );
+
+    // Initial load should display Page 1 with exactly items 1 through 10
+    expect(await screen.findByText('Campaña Especial #1')).toBeInTheDocument();
+    expect(screen.getByText('Campaña Especial #10')).toBeInTheDocument();
+    expect(screen.queryByText('Campaña Especial #11')).not.toBeInTheDocument();
+
+    expect(screen.getByText(/1 - 10/i)).toBeInTheDocument();
+    expect(screen.getByText('Página 1 de 2')).toBeInTheDocument();
+
+    // Click "Siguiente" to navigate to page 2
+    const nextBtn = screen.getByText('Siguiente');
+    fireEvent.click(nextBtn);
+
+    // Page 2 should display items 11 through 15
+    expect(screen.getByText('Campaña Especial #11')).toBeInTheDocument();
+    expect(screen.getByText('Campaña Especial #15')).toBeInTheDocument();
+    expect(screen.queryByText('Campaña Especial #1')).not.toBeInTheDocument();
+    expect(screen.getByText('Página 2 de 2')).toBeInTheDocument();
+    expect(screen.getByText(/11 - 15/i)).toBeInTheDocument();
+
+    // Click "Anterior" to return to page 1
+    const prevBtn = screen.getByText('Anterior');
+    fireEvent.click(prevBtn);
+
+    expect(screen.getByText('Campaña Especial #1')).toBeInTheDocument();
+    expect(screen.getByText('Página 1 de 2')).toBeInTheDocument();
+  });
+
+  it('filters links by name case-insensitively and resets page to 1', async () => {
+    const mixedLinks: LinkItem[] = [
+      {
+        id: 'link-1',
+        name: 'Black Friday Electrónica',
+        shortCode: 'bf-elec',
+        targetUrl: 'https://tienda.com/bf',
+        isActive: true,
+        userId: 'user-1',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'link-2',
+        name: 'Menú Restaurant Bar',
+        shortCode: 'menu-bar',
+        targetUrl: 'https://rest.com/menu',
+        isActive: true,
+        userId: 'user-1',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'link-3',
+        name: 'Cyber Monday Black Deals',
+        shortCode: 'cm-deals',
+        targetUrl: 'https://tienda.com/deals',
+        isActive: false,
+        userId: 'user-1',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+
+    (api.getLinks as any).mockResolvedValue(mixedLinks);
+
+    render(
+      <LinksDashboardView
+        currentUser={mockUser}
+        onNavigateToEditor={vi.fn()}
+        onNavigateToAnalytics={vi.fn()}
+        onOpenUpgradeModal={vi.fn()}
+        onShowToast={vi.fn()}
+        onPreviewQr={vi.fn()}
+        onOrderPhysical={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText('Black Friday Electrónica')).toBeInTheDocument();
+    expect(screen.getByText('Menú Restaurant Bar')).toBeInTheDocument();
+
+    // Type in search query "black"
+    const searchInput = screen.getByPlaceholderText(/Filtrar por nombre, slug o destino.../i);
+    fireEvent.change(searchInput, { target: { value: 'black' } });
+
+    expect(screen.getByText('Black Friday Electrónica')).toBeInTheDocument();
+    expect(screen.getByText('Cyber Monday Black Deals')).toBeInTheDocument();
+    expect(screen.queryByText('Menú Restaurant Bar')).not.toBeInTheDocument();
+  });
+
+  it('enforces mandatory name on inline renaming', async () => {
+    const toastMock = vi.fn();
+    (api.updateLink as any).mockResolvedValue({
+      ...mockLinks[0],
+      name: 'Menú Renovado 2026',
+    });
+
+    render(
+      <LinksDashboardView
+        currentUser={mockUser}
+        onNavigateToEditor={vi.fn()}
+        onNavigateToAnalytics={vi.fn()}
+        onOpenUpgradeModal={vi.fn()}
+        onShowToast={toastMock}
+        onPreviewQr={vi.fn()}
+        onOrderPhysical={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText('Menú Digital QR + NFC Mesa')).toBeInTheDocument();
+
+    // Click edit pencil button next to name
+    const editBtns = screen.getAllByTitle('Editar nombre de referencia (Obligatorio)');
+    fireEvent.click(editBtns[0]);
+
+    const nameInput = screen.getByPlaceholderText('Nombre obligatorio *');
+    expect(nameInput).toBeInTheDocument();
+
+    // Attempt to save with empty name
+    fireEvent.change(nameInput, { target: { value: '   ' } });
+    const okBtn = screen.getByText('OK');
+    fireEvent.click(okBtn);
+
+    expect(toastMock).toHaveBeenCalledWith('El Nombre de Referencia es obligatorio', 'error');
+    expect(api.updateLink).not.toHaveBeenCalled();
+
+    // Save with valid name
+    fireEvent.change(nameInput, { target: { value: 'Menú Renovado 2026' } });
+    fireEvent.click(okBtn);
+
+    await waitFor(() => {
+      expect(api.updateLink).toHaveBeenCalledWith('link-1', { name: 'Menú Renovado 2026' });
+      expect(toastMock).toHaveBeenCalledWith('Nombre de referencia actualizado', 'success');
+    });
+  });
 });

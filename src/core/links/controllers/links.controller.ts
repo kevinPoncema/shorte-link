@@ -38,7 +38,9 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { Link } from '../../models/link.entity';
 import { CreateLinkDto } from '../dto/create-link.dto';
+import { FindLinksQueryDto } from '../dto/find-links-query.dto';
 import { LinkStatsResponseDto } from '../dto/link-stats-response.dto';
+import { PaginatedLinksResponseDto } from '../dto/paginated-links-response.dto';
 import { UpdateLinkDto } from '../dto/update-link.dto';
 import { LinkStatsService } from '../services/link-stats.service';
 import { LinksService } from '../services/links.service';
@@ -91,20 +93,22 @@ export class LinksController {
   }
 
   /**
-   * Lista todos los enlaces pertenecientes al usuario autenticado.
+   * Lista los enlaces del usuario autenticado, con soporte opcional de paginación y filtros.
    */
   @Get()
   @ApiOperation({
-    summary: 'Listar enlaces del usuario autenticado',
-    description: 'Retorna todos los enlaces del usuario ordenados por fecha de creación descendente.',
+    summary: 'Listar enlaces del usuario autenticado con paginación y filtros opcionales',
+    description:
+      'Retorna enlaces ordenados descendentemente. Soporta opcionalmente paginación (?page=1&limit=10) y filtro por nombre (?name=...). Si se omite la paginación, retorna el array completo.',
   })
   @ApiOkResponse({
-    description: 'Listado de enlaces del usuario',
-    type: Link,
-    isArray: true,
+    description: 'Listado de enlaces del usuario (paginado con metadatos o plano)',
   })
-  async findAll(@CurrentUser() user: JwtPayload): Promise<Link[]> {
-    return this.linksService.findAllByUser(user.sub);
+  async findAll(
+    @CurrentUser() user: JwtPayload,
+    @Query() query?: FindLinksQueryDto,
+  ): Promise<PaginatedLinksResponseDto | Link[]> {
+    return this.linksService.findAllByUser(user.sub, query);
   }
 
   /**

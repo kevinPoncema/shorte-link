@@ -43,6 +43,7 @@ describe('LinksService, TypeOrmLinkRepository, LinksController & RedirectControl
     find: jest.Mock;
     findOne: jest.Mock;
     remove: jest.Mock;
+    findAndCount: jest.Mock;
   };
 
   const defaultUser: JwtPayload = {
@@ -95,6 +96,43 @@ describe('LinksService, TypeOrmLinkRepository, LinksController & RedirectControl
       }),
       find: jest.fn(async ({ where }: { where: { userId: string } }) =>
         storedLinks.filter((l) => l.userId === where.userId),
+      ),
+      findAndCount: jest.fn(
+        async ({
+          where,
+          skip = 0,
+          take,
+        }: {
+          where: any;
+          skip?: number;
+          take?: number;
+        }) => {
+          let filtered = storedLinks.slice();
+          if (Array.isArray(where)) {
+            filtered = filtered.filter((l) =>
+              where.some((w: any) => {
+                const userMatch = !w.userId || l.userId === w.userId;
+                const nameVal = w.name?._value !== undefined ? String(w.name._value) : String(w.name || '');
+                const nameClean = nameVal.replace(/%/g, '').toLowerCase();
+                const nameMatch = !nameClean || (l.name ? l.name.toLowerCase().includes(nameClean) : false);
+
+                const shortVal = w.shortCode?._value !== undefined ? String(w.shortCode._value) : String(w.shortCode || '');
+                const shortClean = shortVal.replace(/%/g, '').toLowerCase();
+                const shortMatch = !shortClean || l.shortCode.toLowerCase().includes(shortClean);
+
+                return userMatch && (nameMatch || shortMatch);
+              }),
+            );
+          } else if (where && where.userId) {
+            filtered = filtered.filter((l) => l.userId === where.userId);
+          }
+          const total = filtered.length;
+          const items =
+            take !== undefined
+              ? filtered.slice(skip, skip + take)
+              : filtered.slice(skip);
+          return [items, total];
+        },
       ),
       findOne: jest.fn(
         async ({
@@ -537,6 +575,79 @@ describe('LinksService, TypeOrmLinkRepository, LinksController & RedirectControl
           referer: 'https://ref1.test',
         }),
       );
+    });
+  });
+
+  describe('findAllByUser with Orchestrator Pattern, Optional Pagination & Name Filters (SOLID)', () => {
+    it('returns a raw Link[] array when no pagination parameters are provided for backwards compatibility', async () => {
+      const res = await linksService.findAllByUser(defaultUser.sub);
+      expect(Array.isArray(res)).toBe(true);
+    });
+
+    it('orchestrates pagination calculations and returns PaginatedLinksResponseDto when page or limit is supplied', async () => {
+      // Create 3 links with distinct names
+      await linksService.createLink(defaultUser, {
+        name: 'Campana Verano 2026',
+        targetUrl: 'https://verano.example.com',
+      });
+      await linksService.createLink(defaultUser, {
+        name: 'Campana Invierno 2026',
+        targetUrl: 'https://invierno.example.com',
+      });
+      await linksService.createLink(defaultUser, {
+        name: 'Descuento Black Friday',
+        targetUrl: 'https://blackfriday.example.com',
+      });
+
+      const paginated = (await linksService.findAllByUser(defaultUser.sub, {
+        page: 1,
+        limit: 2,
+      })) as any;
+
+      expect(paginated).toHaveProperty('data');
+      expect(paginated).toHaveProperty('meta');
+      expect(paginated.data).toBeInstanceOf(Array);
+      expect(paginated.data.length).toBeLessThanOrEqual(2);
+      expect(paginated.meta.page).toBe(1);
+      expect(paginated.meta.limit).toBe(2);
+      expect(paginated.meta.total).toBeGreaterThanOrEqual(3);
+      expect(paginated.meta.totalPages).toBeGreaterThanOrEqual(2);
+      expect(paginated.meta.hasNext).toBe(true);
+    });
+
+    it('filters links by name case-insensitively using repository query criteria', async () => {
+      const filtered = (await linksService.findAllByUser(defaultUser.sub, {
+        page: 1,
+        limit: 10,
+        name: 'Verano',
+      })) as any;
+
+      expect(filtered.data).toBeDefined();
+      expect(
+        filtered.data.every((l: any) =>
+          l.name.toLowerCase().includes('verano'),
+        ),
+      ).toBe(true);
+    });
+
+    it('validates that link name cannot be an empty whitespace string when creating or updating', async () => {
+      await expect(
+        linksService.createLink(defaultUser, {
+          name: '   ',
+          targetUrl: 'https://empty-name.com',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      const link = await linksService.createLink(defaultUser, {
+        name: 'Nombre Valido',
+        targetUrl: 'https://valid-name.com',
+      });
+
+      await expect(
+        linksService.updateLink(defaultUser, link.id, {
+          name: '   ',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

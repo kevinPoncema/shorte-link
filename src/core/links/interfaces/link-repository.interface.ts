@@ -27,6 +27,16 @@ export type RedirectLinkProjection = Pick<
 >;
 
 /**
+ * Criterios de consulta y paginación desacoplados de la persistencia para `ILinkRepository`.
+ */
+export interface FindLinksOptions {
+  skip?: number;
+  take?: number;
+  name?: string;
+  search?: string;
+}
+
+/**
  * Contrato de repositorio de dominio para la entidad `Link`.
  * Separa estrictamente la lógica de negocio de las primitivas de TypeORM.
  */
@@ -50,6 +60,14 @@ export interface ILinkRepository {
    * Obtiene todos los enlaces de un usuario ordenados por fecha de creación descendente.
    */
   findAllByUser(userId: string): Promise<Link[]>;
+
+  /**
+   * Obtiene una página de enlaces y el conteo total para un usuario aplicando filtros opcionales.
+   */
+  findAndCountByUser(
+    userId: string,
+    options?: FindLinksOptions,
+  ): Promise<[Link[], number]>;
 
   /**
    * Obtiene un enlace por su ID verificando que pertenezca al usuario indicado (prevención IDOR).

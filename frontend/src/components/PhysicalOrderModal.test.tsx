@@ -209,7 +209,7 @@ describe('PhysicalOrderModal (Physical QR & NFC Product Ordering with Mocks)', (
 
     // Pantalla de confirmación
     expect(
-      screen.getByText('¡Orden Física Emitida Exitosamente!'),
+      await screen.findByText('¡Orden Física Emitida Exitosamente!'),
     ).toBeInTheDocument();
     expect(screen.getByText('order-phys-999')).toBeInTheDocument();
     expect(screen.getByText('in_production')).toBeInTheDocument();

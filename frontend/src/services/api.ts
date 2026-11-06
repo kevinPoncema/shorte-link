@@ -27,6 +27,27 @@ export interface LinkItem {
   updatedAt: string;
 }
 
+export interface GetLinksQuery {
+  page?: number;
+  limit?: number;
+  name?: string;
+  search?: string;
+}
+
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+export interface PaginatedLinksResponse {
+  data: LinkItem[];
+  meta: PaginationMeta;
+}
+
 export interface AuthResponse {
   accessToken: string;
   access_token?: string;
@@ -287,8 +308,41 @@ class ApiService {
   }
 
   // --- Links endpoints ---
-  async getLinks(): Promise<LinkItem[]> {
-    return this.request<LinkItem[]>('/links');
+  async getLinks(query?: GetLinksQuery): Promise<LinkItem[]> {
+    const params = new URLSearchParams();
+    if (query?.page) params.append('page', String(query.page));
+    if (query?.limit) params.append('limit', String(query.limit));
+    if (query?.name) params.append('name', query.name);
+    if (query?.search) params.append('search', query.search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+
+    const res = await this.request<LinkItem[] | PaginatedLinksResponse>(`/links${qs}`);
+    return Array.isArray(res) ? res : res.data;
+  }
+
+  async getPaginatedLinks(query: GetLinksQuery): Promise<PaginatedLinksResponse> {
+    const params = new URLSearchParams();
+    if (query.page) params.append('page', String(query.page));
+    if (query.limit) params.append('limit', String(query.limit));
+    if (query.name) params.append('name', query.name);
+    if (query.search) params.append('search', query.search);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+
+    const res = await this.request<LinkItem[] | PaginatedLinksResponse>(`/links${qs}`);
+    if (Array.isArray(res)) {
+      return {
+        data: res,
+        meta: {
+          total: res.length,
+          page: query.page || 1,
+          limit: query.limit || res.length || 10,
+          totalPages: Math.ceil(res.length / (query.limit || 10)) || 1,
+          hasNext: false,
+          hasPrev: false,
+        },
+      };
+    }
+    return res;
   }
 
   async createLink(payload: {

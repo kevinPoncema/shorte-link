@@ -19,6 +19,8 @@ import {
   Sparkles,
   Layers,
   BarChart2,
+  Search,
+  X,
 } from 'lucide-react';
 
 interface AnalyticsViewProps {
@@ -39,6 +41,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d' | '365d'>('7d');
   const [allLinks, setAllLinks] = useState<LinkItem[]>([]);
   const [currentLink, setCurrentLink] = useState<LinkItem | null>(null);
+  const [linkFilterQuery, setLinkFilterQuery] = useState('');
   const [stats, setStats] = useState<LinkStatsResponse | null>(null);
   const [hardwareOrder, setHardwareOrder] = useState<OrderRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -200,31 +203,71 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
     return '🌐';
   };
 
+  const filteredSelectorLinks = allLinks.filter((l) => {
+    const term = linkFilterQuery.trim().toLowerCase();
+    if (!term) return true;
+    return (
+      (l.name || '').toLowerCase().includes(term) ||
+      l.shortCode.toLowerCase().includes(term)
+    );
+  });
+
   return (
     <div className="space-y-4 pb-24">
       {/* 1. Header Row: Back button + Live badge */}
-      <div className="flex items-center justify-between text-xs px-1">
+      <div className="flex items-center justify-between text-xs px-1 gap-2">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 font-bold tracking-wider text-zinc-300 hover:text-white uppercase text-[11px] transition-colors"
+          className="flex items-center gap-1.5 font-bold tracking-wider text-zinc-300 hover:text-white uppercase text-[11px] transition-colors shrink-0"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>ANALÍTICAS</span>
         </button>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {allLinks.length > 1 && (
-            <select
-              value={currentLink?.id || ''}
-              onChange={handleSelectLink}
-              className="bg-[#131620] border border-white/10 rounded-lg text-[11px] text-zinc-300 px-2 py-0.5 focus:outline-none focus:border-indigo-500"
-            >
-              {allLinks.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name || l.shortCode}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center bg-[#131620] border border-white/10 rounded-lg p-0.5 shadow-sm">
+              <div className="relative flex items-center">
+                <Search className="w-3 h-3 text-zinc-500 absolute left-2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={linkFilterQuery}
+                  onChange={(e) => setLinkFilterQuery(e.target.value)}
+                  placeholder="Filtrar por nombre..."
+                  aria-label="Filtrar enlaces por nombre"
+                  className="bg-transparent text-[11px] text-zinc-300 pl-6 pr-5 py-0.5 w-24 sm:w-36 focus:outline-none focus:text-white placeholder-zinc-500"
+                />
+                {linkFilterQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setLinkFilterQuery('')}
+                    className="absolute right-1 text-zinc-500 hover:text-white p-0.5"
+                    title="Limpiar filtro"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
+
+              <select
+                value={currentLink?.id || ''}
+                onChange={handleSelectLink}
+                aria-label="Seleccionar enlace analizado"
+                className="bg-[#0B0D13] border-l border-white/10 text-[11px] text-zinc-300 px-2 py-0.5 focus:outline-none focus:border-indigo-500 rounded-r cursor-pointer max-w-[130px] sm:max-w-[180px] truncate"
+              >
+                {filteredSelectorLinks.length === 0 ? (
+                  <option value="" disabled>
+                    Sin coincidencias
+                  </option>
+                ) : (
+                  filteredSelectorLinks.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name || l.shortCode}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
           )}
 
           <div
