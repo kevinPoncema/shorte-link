@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QrEditorView } from './QrEditorView';
-import { api, User } from '../services/api';
+import { api, LinkItem, User } from '../services/api';
 
 vi.mock('../services/api', () => ({
   api: {
@@ -23,7 +23,7 @@ describe('QrEditorView Component', () => {
     vi.clearAllMocks();
   });
 
-  it('renders QR Studio editor, live preview and empty required fields', () => {
+  it('renders QR Studio editor, live preview and empty required fields without custom slug input', () => {
     render(
       <QrEditorView
         currentUser={mockUser}
@@ -41,6 +41,10 @@ describe('QrEditorView Component', () => {
     expect(screen.getByPlaceholderText(/Ej\. Menú Principal/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText('https://ejemplo.com/tu-destino')).toBeInTheDocument();
     expect(screen.getByText('Obligatorio')).toBeInTheDocument();
+
+    // Verifies that Slug Corto Personalizado does NOT appear and final destination link placeholder is shown
+    expect(screen.queryByText(/Slug Corto Personalizado/i)).not.toBeInTheDocument();
+    expect(screen.getByText('https://tu-destino-final.com')).toBeInTheDocument();
   });
 
   it('validates required name field before saving', async () => {
@@ -96,12 +100,51 @@ describe('QrEditorView Component', () => {
     fireEvent.change(nameInput, { target: { value: 'Carta de Vinos & Licores' } });
     fireEvent.change(urlInput, { target: { value: 'https://restaurantecentral.com/vinos-2025' } });
 
+    // Under QR preview, target URL is shown dynamically
+    expect(screen.getByText('https://restaurantecentral.com/vinos-2025')).toBeInTheDocument();
+
     const saveBtn = screen.getByText('Guardar Dinámico');
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(api.createLink).toHaveBeenCalled();
+      expect(api.createLink).toHaveBeenCalledWith({
+        name: 'Carta de Vinos & Licores',
+        targetUrl: 'https://restaurantecentral.com/vinos-2025',
+      });
       expect(handleSaved).toHaveBeenCalled();
     });
+
+    // Generated shortened link appears after creation
+    expect(await screen.findByText('Enlace Acortado Generado')).toBeInTheDocument();
+    expect(screen.getByText('kineti.qr/r/vinos2025')).toBeInTheDocument();
+  });
+
+  it('displays read-only generated short link when editing an existing link', () => {
+    const existingLink: LinkItem = {
+      id: 'link-1',
+      name: 'Menú Digital',
+      shortCode: 'menu123',
+      targetUrl: 'https://restaurante.com/menu',
+      isActive: true,
+      userId: 'user-1',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    render(
+      <QrEditorView
+        currentUser={mockUser}
+        linkToEdit={existingLink}
+        onSaved={vi.fn()}
+        onAssignToNfc={vi.fn()}
+        onOpenUpgradeModal={vi.fn()}
+        onShowToast={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Enlace Acortado Generado')).toBeInTheDocument();
+    expect(screen.getByText('kineti.qr/r/menu123')).toBeInTheDocument();
+    expect(screen.getByText('https://restaurante.com/menu')).toBeInTheDocument();
+    expect(screen.queryByText(/Slug Corto Personalizado/i)).not.toBeInTheDocument();
   });
 });

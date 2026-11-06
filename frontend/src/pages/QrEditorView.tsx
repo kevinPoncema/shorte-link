@@ -22,6 +22,7 @@ import {
   Link2,
   Tag,
   RefreshCw,
+  Copy,
 } from 'lucide-react';
 
 interface QrEditorViewProps {
@@ -72,7 +73,6 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
     : targetUrl.trim()
       ? targetUrl.trim()
       : `${API_BASE_URL}/preview`;
-  const displaySlugUrl = slug.trim() ? `kineti.qr/r/${slug.trim()}` : 'kineti.qr/r/...';
 
   const isValidUrl = /^https?:\/\//i.test(targetUrl.trim());
 
@@ -81,8 +81,12 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
       onShowToast('Ingresa una URL de destino antes de probar el escaneo', 'info');
       return;
     }
-    window.open(shortUrl, '_blank');
-    onShowToast('Abriendo redirección rápida en nueva pestaña', 'info');
+    let clean = targetUrl.trim();
+    if (!/^https?:\/\//i.test(clean)) {
+      clean = `https://${clean}`;
+    }
+    window.open(slug.trim() ? `${API_BASE_URL}/${slug.trim()}` : clean, '_blank');
+    onShowToast('Abriendo enlace de destino en nueva pestaña', 'info');
   };
 
   const handleDownloadSvg = () => {
@@ -126,13 +130,6 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
           }
         : undefined;
 
-      // Normalizar slug para validación OpenAPI: ^[A-Za-z0-9]{6,16}$
-      const alphanumericSlug = slug.replace(/[^A-Za-z0-9]/g, '');
-      const validShortCode =
-        alphanumericSlug.length >= 6 && alphanumericSlug.length <= 16
-          ? alphanumericSlug
-          : undefined;
-
       let savedLink: LinkItem;
 
       if (linkToEdit) {
@@ -146,9 +143,9 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
         savedLink = await api.createLink({
           name: name.trim(),
           targetUrl: cleanTarget,
-          ...(validShortCode ? { shortCode: validShortCode } : {}),
           ...(qrConfig ? { qrConfig } : {}),
         });
+        setSlug(savedLink.shortCode);
         onShowToast('¡Enlace dinámico creado y precalentado en RAM!', 'success');
       }
 
@@ -213,10 +210,10 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
           )}
         </div>
 
-        {/* Slug pill under QR */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0B0D13] border border-white/5 text-xs text-zinc-300 font-mono">
-          <Link2 className="w-3.5 h-3.5 text-emerald-400" />
-          <span>{displaySlugUrl}</span>
+        {/* Enlace Final pill under QR */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0B0D13] border border-white/5 text-xs text-zinc-300 font-mono max-w-full overflow-hidden">
+          <ExternalLink className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span className="truncate">{targetUrl.trim() || 'https://tu-destino-final.com'}</span>
         </div>
 
         {/* Two Action Buttons: Probar Escaneo & SVG / 4K */}
@@ -323,29 +320,31 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
           </p>
         </div>
 
-        {/* Field: Slug Corto Personalizado */}
-        <div className="space-y-1">
-          <label className="block text-[11px] font-medium text-zinc-300 px-1">
-            Slug Corto Personalizado (Opcional)
-          </label>
-          <div className="flex items-center rounded-xl bg-[#131620] border border-white/5 overflow-hidden focus-within:border-indigo-500 transition-colors">
-            <span className="px-3 py-2.5 bg-[#0B0D13] text-zinc-500 text-xs font-mono border-r border-white/5">
-              kineti.qr/r/
-            </span>
-            <input
-              type="text"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-              placeholder="ejemplo-promo"
-              className="flex-1 bg-transparent px-3 py-2.5 text-xs text-white font-mono focus:outline-none"
-            />
-            {slug && (
-              <span className="pr-3 text-emerald-400">
-                <Check className="w-4 h-4" />
-              </span>
-            )}
+        {/* Enlace Acortado Generado (Solo lectura si ya existe; si aún no se crea se deja el espacio) */}
+        {slug ? (
+          <div className="space-y-1">
+            <label className="block text-[11px] font-medium text-zinc-400 px-1">
+              Enlace Acortado Generado
+            </label>
+            <div className="flex items-center justify-between rounded-xl bg-[#0B0D13] border border-white/5 px-3 py-2 text-xs text-zinc-300 font-mono">
+              <div className="flex items-center gap-2 truncate min-w-0">
+                <Link2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="truncate text-white">kineti.qr/r/{slug}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${API_BASE_URL}/${slug}`);
+                  onShowToast(`Copiado kineti.qr/r/${slug} al portapapeles`, 'success');
+                }}
+                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] text-zinc-300 hover:text-white flex items-center gap-1 shrink-0 ml-2 transition-colors"
+              >
+                <Copy className="w-3 h-3 text-zinc-400" />
+                <span>Copiar</span>
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
 
       {/* 4. Estilo & Marca (PRO FEATURE) */}
