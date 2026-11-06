@@ -1,59 +1,64 @@
 import { useEffect, useState } from 'react';
-import { api, User } from './services/api';
-import { Navbar } from './components/Navbar';
+import { api, User, LinkItem } from './services/api';
+import { Header } from './components/layout/Header';
+import { BottomNav, TabType } from './components/layout/BottomNav';
+import { Toast, ToastMessage } from './components/layout/Toast';
+import { AccountModal } from './components/modals/AccountModal';
+import { QrPreviewModal } from './components/modals/QrPreviewModal';
 import { AuthPage } from './pages/AuthPage';
-import { DashboardPage } from './pages/DashboardPage';
+import { LinksDashboardView } from './pages/LinksDashboardView';
+import { QrEditorView } from './pages/QrEditorView';
+import { AnalyticsView } from './pages/AnalyticsView';
+import { NfcStoreView } from './pages/NfcStoreView';
 import { StripeSandboxPage } from './pages/StripeSandboxPage';
-import { PlanManagementModal } from './components/PlanManagementModal';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 export function App() {
   const [user, setUser] = useState<User | null>(() => api.getCurrentUser());
-  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
-  const [paymentNotice, setPaymentNotice] = useState<{
-    type: 'success' | 'cancelled';
-    message: string;
-  } | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('links');
+  const [workspace, setWorkspace] = useState('Restaurante Central');
+
+  // Modals & Navigation state
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [previewingLink, setPreviewingLink] = useState<LinkItem | null>(null);
+  const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
+  const [selectedAnalyticsLinkId, setSelectedAnalyticsLinkId] = useState<string | null>(null);
+  const [hardwareTargetLink, setHardwareTargetLink] = useState<LinkItem | null>(null);
+
+  // Toast state
+  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   const token = localStorage.getItem('token');
   const isAuthenticated = Boolean(token && user);
-  const sandboxMode = new URLSearchParams(window.location.search).get(
-    'stripe_sandbox',
-  );
+  const sandboxMode = new URLSearchParams(window.location.search).get('stripe_sandbox');
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({
+      id: Date.now().toString(),
+      type,
+      message,
+    });
+  };
 
   useEffect(() => {
-    // Detectar retorno desde Stripe Checkout (?payment=success|cancelled o ?order=success|cancelled)
+    // Detect Stripe redirect URL parameters
     const params = new URLSearchParams(window.location.search);
     const paymentStatus = params.get('payment');
     const orderStatus = params.get('order');
 
     if (paymentStatus === 'success') {
-      setPaymentNotice({
-        type: 'success',
-        message: '¡Pago completado con éxito! Tu plan ha sido actualizado a PRO.',
-      });
+      showToast('¡Pago completado con éxito! Tu plan ha sido actualizado a PRO.', 'success');
       window.history.replaceState({}, '', window.location.pathname);
     } else if (paymentStatus === 'cancelled') {
-      setPaymentNotice({
-        type: 'cancelled',
-        message: 'Sesión de pago cancelada. Puedes retomar el cambio de plan cuando desees.',
-      });
+      showToast('Sesión de pago cancelada. Puedes retomar el cambio de plan cuando desees.', 'info');
       window.history.replaceState({}, '', window.location.pathname);
     } else if (orderStatus === 'success') {
-      setPaymentNotice({
-        type: 'success',
-        message: '¡Orden de hardware NFC/QR confirmada con éxito! Tu pedido ha pasado a cola de manufactura.',
-      });
+      showToast('¡Orden de hardware NFC/QR confirmada! Tu pedido pasó a manufactura.', 'success');
       window.history.replaceState({}, '', window.location.pathname);
     } else if (orderStatus === 'cancelled') {
-      setPaymentNotice({
-        type: 'cancelled',
-        message: 'Solicitud de pedido físico cancelada.',
-      });
+      showToast('Solicitud de pedido físico cancelada.', 'info');
       window.history.replaceState({}, '', window.location.pathname);
     }
 
-    // Sincronizar perfil y rotar JWT con el plan vigente en PostgreSQL
     if (token) {
       api
         .getMe()
@@ -64,68 +69,125 @@ export function App() {
     }
   }, [token]);
 
-  const handleAuthSuccess = (authenticatedUser: User) => {
-    setUser(authenticatedUser);
+  const handleTabChange = (tab: TabType) => {
+    if (tab === 'account') {
+      setIsAccountModalOpen(true);
+      return;
+    }
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNavigateToEditor = (linkToEdit?: LinkItem) => {
+    setEditingLink(linkToEdit || null);
+    setActiveTab('editor');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNavigateToAnalytics = (linkId: string) => {
+    setSelectedAnalyticsLinkId(linkId);
+    setActiveTab('analytics');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleOrderPhysical = (link: LinkItem) => {
+    setHardwareTargetLink(link);
+    setActiveTab('hardware');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleLogout = () => {
+    api.clearSession();
     setUser(null);
-  };
-
-  const handlePlanUpdated = (updatedUser: User) => {
-    setUser(updatedUser);
+    setIsAccountModalOpen(false);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {paymentNotice && (
-        <div
-          className={`px-4 py-2.5 text-xs font-medium flex items-center justify-between transition-colors ${
-            paymentNotice.type === 'success'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-amber-500 text-white'
-          }`}
-        >
-          <div className="mx-auto max-w-5xl flex items-center gap-2">
-            {paymentNotice.type === 'success' ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-            ) : (
-              <AlertCircle className="h-4 w-4 shrink-0" />
-            )}
-            <span>{paymentNotice.message}</span>
-          </div>
-          <button
-            onClick={() => setPaymentNotice(null)}
-            className="text-white/80 hover:text-white font-bold text-sm px-2"
-          >
-            ×
-          </button>
-        </div>
-      )}
+    <div className="min-h-screen bg-[#0B0D13] text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
 
-      {isAuthenticated &&
-      (sandboxMode === 'checkout' || sandboxMode === 'portal') ? (
+      {isAuthenticated && (sandboxMode === 'checkout' || sandboxMode === 'portal') ? (
         <StripeSandboxPage currentUser={user} />
       ) : isAuthenticated ? (
-        <>
-          <Navbar
+        <div className="min-h-screen flex flex-col">
+          {/* Header */}
+          <Header
             user={user}
+            onOpenAccount={() => setIsAccountModalOpen(true)}
+            currentWorkspace={workspace}
+            onSelectWorkspace={(ws) => {
+              setWorkspace(ws);
+              showToast(`Espacio cambiado a "${ws}"`, 'info');
+            }}
+          />
+
+          {/* Main Content Centered Mobile App Shell */}
+          <main className="flex-1 w-full max-w-md mx-auto px-4 pt-4">
+            {activeTab === 'links' && (
+              <LinksDashboardView
+                currentUser={user}
+                onNavigateToEditor={handleNavigateToEditor}
+                onNavigateToAnalytics={handleNavigateToAnalytics}
+                onOpenUpgradeModal={() => setIsAccountModalOpen(true)}
+                onShowToast={showToast}
+                onPreviewQr={(link) => setPreviewingLink(link)}
+                onOrderPhysical={handleOrderPhysical}
+              />
+            )}
+
+            {activeTab === 'editor' && (
+              <QrEditorView
+                currentUser={user}
+                linkToEdit={editingLink}
+                onSaved={(saved) => {
+                  setEditingLink(saved);
+                  setActiveTab('links');
+                }}
+                onAssignToNfc={handleOrderPhysical}
+                onOpenUpgradeModal={() => setIsAccountModalOpen(true)}
+                onShowToast={showToast}
+              />
+            )}
+
+            {activeTab === 'analytics' && (
+              <AnalyticsView
+                currentUser={user}
+                linkId={selectedAnalyticsLinkId}
+                onBack={() => setActiveTab('links')}
+                onOpenUpgradeModal={() => setIsAccountModalOpen(true)}
+                onShowToast={showToast}
+              />
+            )}
+
+            {activeTab === 'hardware' && (
+              <NfcStoreView
+                currentUser={user}
+                preselectedLink={hardwareTargetLink}
+                onShowToast={showToast}
+              />
+            )}
+          </main>
+
+          {/* Fixed Bottom Navigation */}
+          <BottomNav activeTab={activeTab} onChangeTab={handleTabChange} />
+
+          {/* Modals */}
+          <AccountModal
+            isOpen={isAccountModalOpen}
+            onClose={() => setIsAccountModalOpen(false)}
+            currentUser={user}
+            onUserUpdated={(updated) => setUser(updated)}
             onLogout={handleLogout}
-            onOpenPlans={() => setIsPlanModalOpen(true)}
           />
-          <DashboardPage
-            currentUser={user}
-            onOpenPlans={() => setIsPlanModalOpen(true)}
+
+          <QrPreviewModal
+            link={previewingLink}
+            onClose={() => setPreviewingLink(null)}
+            onShowToast={showToast}
           />
-          <PlanManagementModal
-            isOpen={isPlanModalOpen}
-            onClose={() => setIsPlanModalOpen(false)}
-            currentUser={user}
-            onPlanUpdated={handlePlanUpdated}
-          />
-        </>
+        </div>
       ) : (
-        <AuthPage onAuthSuccess={handleAuthSuccess} />
+        <AuthPage onAuthSuccess={(authUser) => setUser(authUser)} />
       )}
     </div>
   );
