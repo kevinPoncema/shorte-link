@@ -65,10 +65,11 @@ describe('LinksDashboardView Component', () => {
     expect(await screen.findByText(/2 de 3 enlaces activos/i)).toBeInTheDocument();
     expect(screen.getByText('Desbloquear 50')).toBeInTheDocument();
 
-    // Mini-KPIs
-    expect(screen.getByText('3,842')).toBeInTheDocument();
-    expect(screen.getByText('98.2%')).toBeInTheDocument();
-    expect(screen.getByText('Todos en línea')).toBeInTheDocument();
+    // Mini-KPIs (real dynamic values based on 2 of 3 links)
+    expect(screen.getByText('ENLACES ACT.')).toBeInTheDocument();
+    expect(screen.getByText('CUOTA USO')).toBeInTheDocument();
+    expect(screen.getByText('67%')).toBeInTheDocument();
+    expect(screen.getByText('DISPONIBLE')).toBeInTheDocument();
   });
 
   it('renders links and toggles active state', async () => {

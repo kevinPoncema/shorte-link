@@ -326,7 +326,14 @@ export const StripeSandboxPage: React.FC<StripeSandboxPageProps> = ({
             </div>
           </div>
 
-          {/* Nota informativa para llaves reales de Stripe */}
+          {/* Nota informativa para llaves reales de Stripe y Aviso de Prototipo */}
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-[11px] text-amber-200 leading-relaxed space-y-1">
+            <strong className="text-amber-300 block font-bold">Aviso de Prototipo Técnico:</strong>
+            <p>
+              Este entorno es exclusivamente para pruebas de concepto y validación técnica. No se procesará ningún cobro bancario real en tu cuenta ni se realizarán envíos físicos de hardware o tarjetas.
+            </p>
+          </div>
+
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3.5 text-[11px] text-slate-400 leading-relaxed">
             <strong className="text-slate-200">Pasarela Sandbox Activa:</strong>{' '}
             Tu archivo <code className="text-amber-300">.env</code> usa actualmente una clave

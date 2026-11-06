@@ -179,35 +179,35 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Mini-KPIs Grid */}
+      {/* 2. Mini-KPIs Grid (Dinámico sin datos quemados) */}
       <div className="grid grid-cols-3 gap-2">
         <div className="p-3 rounded-2xl bg-[#131620] border border-white/5 space-y-1">
           <div className="flex items-center justify-between text-zinc-400 text-[10px] font-bold tracking-wider">
-            <span>ESCANEOS M...</span>
+            <span>ENLACES ACT.</span>
             <QrCode className="w-3.5 h-3.5 text-zinc-400" />
           </div>
-          <div className="text-lg font-black text-white">3,842</div>
+          <div className="text-lg font-black text-white">{activeCount}</div>
           <div className="text-[10px] font-semibold text-emerald-400 flex items-center gap-0.5">
-            <span>↗ +18.4%</span>
+            <span>En línea</span>
           </div>
         </div>
 
         <div className="p-3 rounded-2xl bg-[#131620] border border-white/5 space-y-1">
           <div className="flex items-center justify-between text-zinc-400 text-[10px] font-bold tracking-wider">
-            <span>ACTIVIDAD</span>
+            <span>CUOTA USO</span>
             <Radio className="w-3.5 h-3.5 text-emerald-400" />
           </div>
-          <div className="text-lg font-black text-white">98.2%</div>
-          <div className="text-[10px] text-zinc-400">Salud tags</div>
+          <div className="text-lg font-black text-white">{quotaUsedPercent}%</div>
+          <div className="text-[10px] text-zinc-400">Capacidad</div>
         </div>
 
         <div className="p-3 rounded-2xl bg-[#131620] border border-white/5 space-y-1">
           <div className="flex items-center justify-between text-zinc-400 text-[10px] font-bold tracking-wider">
-            <span>TAGS NFC</span>
+            <span>DISPONIBLE</span>
             <Tag className="w-3.5 h-3.5 text-amber-400" />
           </div>
-          <div className="text-lg font-black text-white">4</div>
-          <div className="text-[10px] font-semibold text-emerald-400">Todos en línea</div>
+          <div className="text-lg font-black text-white">{remainingLinks}</div>
+          <div className="text-[10px] font-semibold text-amber-400">Cupos libres</div>
         </div>
       </div>
 
@@ -261,7 +261,16 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
 
       {/* 6. Link Cards List */}
       <div className="space-y-3">
-        {filteredLinks.map((link, index) => {
+        {filteredLinks.length === 0 ? (
+          <div className="p-8 rounded-2xl bg-[#131620] border border-white/5 text-center space-y-2">
+            <Link2 className="w-8 h-8 text-zinc-500 mx-auto" />
+            <h4 className="text-sm font-bold text-white">No hay enlaces configurados</h4>
+            <p className="text-xs text-zinc-400 max-w-xs mx-auto">
+              Presiona el botón "+ Crear enlace nuevo" para registrar tu primer código QR dinámico.
+            </p>
+          </div>
+        ) : (
+          filteredLinks.map((link, index) => {
           const isMenu = index % 2 === 0;
           const displaySlug = `kineti.qr/r/${link.shortCode}`;
           const isMenuOpen = menuOpenId === link.id;
@@ -376,15 +385,17 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
                 )}
               </div>
 
-              {/* Bottom Tags & Action Buttons */}
+              {/* Bottom Tags & Action Buttons (Dinámico sin datos quemados) */}
               <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-medium">
-                    {index === 0 ? '2,410' : '1,432'} scans
+                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                    link.isActive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-400'
+                  }`}>
+                    {link.isActive ? 'Activo en RAM' : 'Pausado'}
                   </span>
-                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 font-medium flex items-center gap-1">
-                    <Tag className="w-2.5 h-2.5" />
-                    <span>{index === 0 ? 'NFC Tag #A1' : 'Sticker Bar #04'}</span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 text-zinc-300 font-mono text-[10px] flex items-center gap-1">
+                    <Tag className="w-2.5 h-2.5 text-zinc-400" />
+                    <span>/{link.shortCode}</span>
                   </span>
                 </div>
 
@@ -455,7 +466,8 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
               </div>
             </div>
           );
-        })}
+        })
+      )}
       </div>
 
       {/* 7. Paywall Card: Límite Starter alcanzado */}
@@ -496,21 +508,6 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
           </div>
         </div>
       )}
-
-      {/* 8. Skeleton Loader Card for sleek styling */}
-      <div className="p-4 rounded-2xl bg-[#131620]/60 border border-white/5 space-y-3 opacity-60">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-white/5 animate-pulse" />
-            <div className="space-y-1.5">
-              <div className="h-3.5 w-32 rounded bg-white/10 animate-pulse" />
-              <div className="h-2.5 w-20 rounded bg-white/5 animate-pulse" />
-            </div>
-          </div>
-          <div className="h-5 w-9 rounded-full bg-white/5" />
-        </div>
-        <div className="h-7 w-full rounded-xl bg-white/5 animate-pulse" />
-      </div>
     </div>
   );
 };

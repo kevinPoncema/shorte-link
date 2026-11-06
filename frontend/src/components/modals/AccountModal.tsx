@@ -10,6 +10,7 @@ import {
   LogOut,
   AlertCircle,
   CheckCircle2,
+  Info,
 } from 'lucide-react';
 import { api, User } from '../../services/api';
 
@@ -141,6 +142,19 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               <span>{success}</span>
             </div>
           )}
+
+          {/* Nota Prototipo Técnico y Sin Cobro */}
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2.5 text-xs text-amber-200">
+            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-bold text-amber-300 block">
+                Aviso: Prototipo Técnico de Demostración
+              </span>
+              <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                Este sistema opera en modo prototipo técnico para pruebas y validación. No se efectuará ningún cobro monetario real a tu tarjeta ni se realizará ningún envío físico de materiales.
+              </p>
+            </div>
+          </div>
 
           {/* Current Plan Badge Card */}
           <div className="p-4 rounded-2xl bg-[#0B0D13] border border-white/5 flex items-center justify-between">

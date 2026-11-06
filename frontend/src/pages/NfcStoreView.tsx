@@ -81,15 +81,15 @@ export const NfcStoreView: React.FC<NfcStoreViewProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'catalog' | 'orders'>('catalog');
   const [selectedProductId, setSelectedProductId] = useState<string>('acrylic_stand');
-  const [selectedLinkId, setSelectedLinkId] = useState<string>('');
+  const [selectedLinkId, setSelectedLinkId] = useState<string>(preselectedLink?.id || '');
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [quantity, setQuantity] = useState<number>(5);
 
-  // Shipping form fields with exact placeholders from reference
-  const [fullName, setFullName] = useState('Carlos Mendoza');
-  const [address, setAddress] = useState('Av. Libertador 1420, Piso 1');
-  const [city, setCity] = useState('Ciudad de México');
-  const [phone, setPhone] = useState('+52 55 4910 8820');
+  // Campos de envío sin datos quemados / precargados
+  const [fullName, setFullName] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [phone, setPhone] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [orders, setOrders] = useState<OrderRecord[]>([]);
@@ -109,7 +109,9 @@ export const NfcStoreView: React.FC<NfcStoreViewProps> = ({
     try {
       const data = await api.getLinks();
       setLinks(data);
-      if (data.length > 0 && !selectedLinkId) {
+      if (preselectedLink) {
+        setSelectedLinkId(preselectedLink.id);
+      } else if (data.length > 0 && !selectedLinkId) {
         setSelectedLinkId(data[0].id);
       }
     } catch {
@@ -132,6 +134,11 @@ export const NfcStoreView: React.FC<NfcStoreViewProps> = ({
   const totalPrice = unitPrice * quantity;
 
   const handleCheckoutStripe = async () => {
+    if (!selectedLinkId) {
+      onShowToast('Debes seleccionar un enlace acortado existente para vincular al hardware NFC', 'error');
+      return;
+    }
+
     if (!fullName.trim() || !address.trim() || !city.trim() || !phone.trim()) {
       onShowToast('Por favor completa todos los datos de envío', 'error');
       return;
@@ -143,7 +150,7 @@ export const NfcStoreView: React.FC<NfcStoreViewProps> = ({
       const res = await api.createPhysicalOrderCheckout({
         items: [
           {
-            linkId: selectedLinkId || undefined,
+            linkId: selectedLinkId,
             itemType: selectedProduct.id,
             quantity,
             specifications: {
@@ -312,30 +319,42 @@ export const NfcStoreView: React.FC<NfcStoreViewProps> = ({
             </div>
 
             <div className="p-4 rounded-2xl bg-[#131620] border border-white/5 space-y-3.5">
-              {/* Dropdown Vincular enlace */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-1 text-[11px] font-medium text-zinc-300">
-                  <span>Vincular a enlace existente</span>
-                  <Info className="w-3 h-3 text-zinc-500" />
+              {/* Dropdown Vincular enlace (Obligatorio) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-medium text-zinc-300">
+                  <span className="flex items-center gap-1">
+                    <span>Vincular a enlace existente</span>
+                    <span className="text-rose-400 font-bold">*</span>
+                  </span>
+                  <span className="text-[10px] text-rose-400 font-medium">Obligatorio</span>
                 </div>
 
-                <div className="relative">
-                  <select
-                    value={selectedLinkId}
-                    onChange={(e) => setSelectedLinkId(e.target.value)}
-                    className="w-full bg-[#0B0D13] border border-white/5 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none appearance-none cursor-pointer"
-                  >
-                    {links.map((link) => (
-                      <option key={link.id} value={link.id}>
-                        {link.name || link.shortCode} (kineti.qr/r/{link.shortCode})
-                      </option>
-                    ))}
-                    {links.length === 0 && (
-                      <option value="">Menú Digital (kineti.qr/r/menu)</option>
-                    )}
-                  </select>
-                  <ChevronDown className="w-4 h-4 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                {links.length === 0 ? (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 space-y-1">
+                    <span className="font-bold block text-amber-300">
+                      ⚠️ No tienes enlaces creados todavía
+                    </span>
+                    <p className="text-[11px] text-zinc-300">
+                      Para solicitar hardware físico debes tener al menos un enlace corto creado en el Editor QR.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <select
+                      value={selectedLinkId}
+                      onChange={(e) => setSelectedLinkId(e.target.value)}
+                      className="w-full bg-[#0B0D13] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer"
+                    >
+                      <option value="">-- Selecciona un enlace acortado obligatorio --</option>
+                      {links.map((link) => (
+                        <option key={link.id} value={link.id}>
+                          {link.name || link.shortCode} (kineti.qr/r/{link.shortCode})
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                )}
 
                 <p className="text-[10px] text-zinc-500 flex items-center gap-1 pt-0.5">
                   <span className="text-emerald-400">🔄</span>
@@ -483,17 +502,32 @@ export const NfcStoreView: React.FC<NfcStoreViewProps> = ({
               </span>
             </div>
 
+            {/* Nota Prototipo Técnico */}
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200/90 flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-bold text-amber-300 block">
+                  Aviso de Prototipo Técnico
+                </span>
+                <p className="text-[11px] leading-relaxed text-amber-200/80">
+                  Esta tienda opera en modo prototipo de prueba técnica. No se procesará ningún cobro bancario real ni se realizarán envíos físicos de hardware.
+                </p>
+              </div>
+            </div>
+
             {/* Big Primary Stripe Checkout Button */}
             <button
               onClick={handleCheckoutStripe}
-              disabled={loading}
-              className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-60"
+              disabled={loading || !selectedLinkId || links.length === 0}
+              className="w-full py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CreditCard className="w-4 h-4" />
               <span>
                 {loading
                   ? 'Conectando con pasarela...'
-                  : `Pagar $${totalPrice.toFixed(2)} con Stripe Checkout →`}
+                  : !selectedLinkId || links.length === 0
+                    ? 'Selecciona un enlace para pedir hardware'
+                    : `Pagar $${totalPrice.toFixed(2)} con Stripe Checkout →`}
               </span>
             </button>
 
@@ -511,36 +545,47 @@ export const NfcStoreView: React.FC<NfcStoreViewProps> = ({
           </div>
         </>
       ) : (
-        /* Mis Órdenes View */
+        /* Mis Órdenes View (Dinámico sin datos quemados) */
         <div className="space-y-3">
-          <div className="p-4 rounded-2xl bg-[#131620] border border-white/5 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 uppercase">
-                EN PRODUCCIÓN / PAGADO
-              </span>
-              <span className="text-[10px] text-zinc-400">Orden #ORD-2026-9812</span>
-            </div>
-
-            <div className="space-y-1">
-              <h4 className="text-sm font-bold text-white">
-                5x Stand Acrílico de Mesa (Pack Restaurante)
-              </h4>
-              <p className="text-xs text-zinc-400">
-                Vinculado a: <strong className="text-indigo-400">Menú Digital (kineti.qr/r/menu)</strong>
-              </p>
-              <p className="text-[11px] text-zinc-500">
-                Destino: Av. Libertador 1420, Piso 1, CDMX
+          {orders.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-[#131620] border border-white/5 text-center space-y-2">
+              <Package className="w-8 h-8 text-zinc-500 mx-auto" />
+              <h4 className="text-sm font-bold text-white">No tienes órdenes registradas</h4>
+              <p className="text-xs text-zinc-400 max-w-xs mx-auto">
+                Los pedidos de hardware NFC vinculados a tus enlaces aparecerán listados aquí.
               </p>
             </div>
+          ) : (
+            orders.map((ord) => (
+              <div key={ord.id} className="p-4 rounded-2xl bg-[#131620] border border-white/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 uppercase">
+                    {ord.fulfillmentStatus === 'in_production' ? 'EN PRODUCCIÓN / PAGADO' : ord.fulfillmentStatus.toUpperCase()}
+                  </span>
+                  <span className="text-[10px] font-mono text-zinc-400">Orden #{ord.id.slice(0, 8)}</span>
+                </div>
 
-            <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs">
-              <span className="font-semibold text-zinc-400">Total: $75.00 USD</span>
-              <span className="text-indigo-400 font-semibold flex items-center gap-1">
-                <Truck className="w-3.5 h-3.5" />
-                <span>DHL Express: En tránsito</span>
-              </span>
-            </div>
-          </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-white">
+                    {ord.items?.map((it) => `${it.quantity}x ${it.itemType || (it as any).productName || 'Hardware NFC'}`).join(', ') || 'Insumo NFC'}
+                  </h4>
+                  {ord.shippingAddress && (
+                    <p className="text-[11px] text-zinc-500">
+                      Destino: {ord.shippingAddress.addressLine1}, {ord.shippingAddress.city} ({ord.shippingAddress.fullName})
+                    </p>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-zinc-400">Total: ${Number(ord.totalAmount).toFixed(2)} USD</span>
+                  <span className="text-indigo-400 font-semibold flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5" />
+                    <span>Courier: Registrado</span>
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

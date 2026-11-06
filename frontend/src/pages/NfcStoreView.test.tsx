@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { NfcStoreView } from './NfcStoreView';
 import { api, User } from '../services/api';
 
@@ -22,11 +22,19 @@ describe('NfcStoreView Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (api.getLinks as any).mockResolvedValue([]);
+    (api.getLinks as any).mockResolvedValue([
+      {
+        id: 'link-1',
+        name: 'Menú Digital',
+        shortCode: 'menu',
+        targetUrl: 'https://ejemplo.com',
+        isActive: true,
+      },
+    ]);
     (api.getPhysicalOrders as any).mockResolvedValue([]);
   });
 
-  it('renders 4 hardware products and allows quantity changes', () => {
+  it('renders 4 hardware products and allows quantity changes', async () => {
     render(
       <NfcStoreView
         currentUser={mockUser}
@@ -34,7 +42,7 @@ describe('NfcStoreView Component', () => {
       />
     );
 
-    expect(screen.getAllByText('Stand Acrílico de Mesa').length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Stand Acrílico de Mesa')).length).toBeGreaterThan(0);
     expect(screen.getByText('Tarjeta PVC de Negocios')).toBeInTheDocument();
     expect(screen.getByText('Tarjeta Inteligente NFC')).toBeInTheDocument();
     expect(screen.getByText('Pack de 5 Stickers Resinados')).toBeInTheDocument();
@@ -44,7 +52,29 @@ describe('NfcStoreView Component', () => {
     expect(screen.getAllByText('$75.00 USD').length).toBeGreaterThan(0);
   });
 
-  it('switches to Mis Órdenes subtab', () => {
+  it('switches to Mis Órdenes subtab and displays real order data', async () => {
+    (api.getPhysicalOrders as any).mockResolvedValue([
+      {
+        id: 'order-1',
+        paymentStatus: 'paid',
+        fulfillmentStatus: 'in_production',
+        totalAmount: 75,
+        currency: 'USD',
+        createdAt: new Date().toISOString(),
+        items: [
+          {
+            id: 'item-1',
+            orderId: 'order-1',
+            itemType: 'Stand Acrílico de Mesa',
+            quantity: 5,
+            unitPrice: 15,
+            linkId: 'link-1',
+            specifications: null,
+          },
+        ],
+      },
+    ]);
+
     render(
       <NfcStoreView
         currentUser={mockUser}
@@ -54,6 +84,10 @@ describe('NfcStoreView Component', () => {
 
     const ordersBtn = screen.getByText('Mis Órdenes');
     fireEvent.click(ordersBtn);
-    expect(screen.getByText(/EN PRODUCCIÓN \/ PAGADO/i)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText(/EN PRODUCCIÓN \/ PAGADO/i)).toBeInTheDocument();
+      expect(screen.getByText(/5x Stand Acrílico de Mesa/i)).toBeInTheDocument();
+    });
   });
 });

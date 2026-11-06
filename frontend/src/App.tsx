@@ -15,7 +15,6 @@ import { StripeSandboxPage } from './pages/StripeSandboxPage';
 export function App() {
   const [user, setUser] = useState<User | null>(() => api.getCurrentUser());
   const [activeTab, setActiveTab] = useState<TabType>('links');
-  const [workspace, setWorkspace] = useState('Restaurante Central');
 
   // Modals & Navigation state
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
@@ -114,11 +113,6 @@ export function App() {
           <Header
             user={user}
             onOpenAccount={() => setIsAccountModalOpen(true)}
-            currentWorkspace={workspace}
-            onSelectWorkspace={(ws) => {
-              setWorkspace(ws);
-              showToast(`Espacio cambiado a "${ws}"`, 'info');
-            }}
           />
 
           {/* Main Content Centered Mobile App Shell */}

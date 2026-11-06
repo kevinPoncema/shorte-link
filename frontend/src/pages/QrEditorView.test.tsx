@@ -23,7 +23,7 @@ describe('QrEditorView Component', () => {
     vi.clearAllMocks();
   });
 
-  it('renders QR Studio editor, live preview and default fields', () => {
+  it('renders QR Studio editor, live preview and empty required fields', () => {
     render(
       <QrEditorView
         currentUser={mockUser}
@@ -38,15 +38,39 @@ describe('QrEditorView Component', () => {
     expect(screen.getByText(/Enrutado Dinámico/i)).toBeInTheDocument();
     expect(screen.getByText('Probar Escaneo')).toBeInTheDocument();
     expect(screen.getByText('SVG / 4K')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Carta de Vinos & Licores')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('https://restaurantecentral.com/vinos-2025')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Ej\. Menú Principal/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('https://ejemplo.com/tu-destino')).toBeInTheDocument();
+    expect(screen.getByText('Obligatorio')).toBeInTheDocument();
   });
 
-  it('saves dynamic link on submit button click', async () => {
+  it('validates required name field before saving', async () => {
+    const handleToast = vi.fn();
+
+    render(
+      <QrEditorView
+        currentUser={mockUser}
+        onSaved={vi.fn()}
+        onAssignToNfc={vi.fn()}
+        onOpenUpgradeModal={vi.fn()}
+        onShowToast={handleToast}
+      />
+    );
+
+    const saveBtn = screen.getByText('Guardar Dinámico');
+    fireEvent.click(saveBtn);
+
+    expect(handleToast).toHaveBeenCalledWith(
+      expect.stringContaining('El Nombre de Referencia es obligatorio'),
+      'error'
+    );
+    expect(api.createLink).not.toHaveBeenCalled();
+  });
+
+  it('saves dynamic link on submit button click when valid fields are provided', async () => {
     (api.createLink as any).mockResolvedValue({
       id: 'new-link-id',
       name: 'Carta de Vinos & Licores',
-      shortCode: 'vinos-premium',
+      shortCode: 'vinos2025',
       targetUrl: 'https://restaurantecentral.com/vinos-2025',
       isActive: true,
       userId: 'user-1',
@@ -65,6 +89,12 @@ describe('QrEditorView Component', () => {
         onShowToast={vi.fn()}
       />
     );
+
+    const nameInput = screen.getByPlaceholderText(/Ej\. Menú Principal/i);
+    const urlInput = screen.getByPlaceholderText('https://ejemplo.com/tu-destino');
+
+    fireEvent.change(nameInput, { target: { value: 'Carta de Vinos & Licores' } });
+    fireEvent.change(urlInput, { target: { value: 'https://restaurantecentral.com/vinos-2025' } });
 
     const saveBtn = screen.getByText('Guardar Dinámico');
     fireEvent.click(saveBtn);

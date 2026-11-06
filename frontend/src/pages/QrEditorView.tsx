@@ -18,7 +18,6 @@ import {
   Save,
   Radio,
   Image as ImageIcon,
-  ChevronRight,
   UtensilsCrossed,
   Link2,
   Tag,
@@ -45,13 +44,13 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
   currentUser,
   linkToEdit,
   onSaved,
-  onAssignToNfc,
   onOpenUpgradeModal,
   onShowToast,
 }) => {
-  const [name, setName] = useState(linkToEdit?.name || 'Carta de Vinos & Licores');
-  const [targetUrl, setTargetUrl] = useState(linkToEdit?.targetUrl || 'https://restaurantecentral.com/vinos-2025');
-  const [slug, setSlug] = useState(linkToEdit?.shortCode || 'vinos-premium');
+  const [name, setName] = useState(linkToEdit?.name || '');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [targetUrl, setTargetUrl] = useState(linkToEdit?.targetUrl || '');
+  const [slug, setSlug] = useState(linkToEdit?.shortCode || '');
   const [selectedPalette, setSelectedPalette] = useState('obsidian');
   const [showCenterLogo, setShowCenterLogo] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,12 +67,20 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
   }, [linkToEdit]);
 
   const activePalette = COLOR_PALETTES.find((p) => p.id === selectedPalette) || COLOR_PALETTES[0];
-  const shortUrl = `${API_BASE_URL}/${slug}`;
-  const displaySlugUrl = `kineti.qr/r/${slug}`;
+  const shortUrl = slug.trim()
+    ? `${API_BASE_URL}/${slug.trim()}`
+    : targetUrl.trim()
+      ? targetUrl.trim()
+      : `${API_BASE_URL}/preview`;
+  const displaySlugUrl = slug.trim() ? `kineti.qr/r/${slug.trim()}` : 'kineti.qr/r/...';
 
   const isValidUrl = /^https?:\/\//i.test(targetUrl.trim());
 
   const handleTestScan = () => {
+    if (!targetUrl.trim()) {
+      onShowToast('Ingresa una URL de destino antes de probar el escaneo', 'info');
+      return;
+    }
     window.open(shortUrl, '_blank');
     onShowToast('Abriendo redirección rápida en nueva pestaña', 'info');
   };
@@ -85,13 +92,20 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `qr-${slug}.svg`;
+    a.download = `qr-${slug || 'dinamico'}.svg`;
     a.click();
     URL.revokeObjectURL(url);
-    onShowToast(`Archivo vectorial qr-${slug}.svg descargado`, 'success');
+    onShowToast(`Archivo vectorial qr-${slug || 'dinamico'}.svg descargado`, 'success');
   };
 
   const handleSaveDynamic = async () => {
+    if (!name.trim()) {
+      setNameError('El Nombre de Referencia es obligatorio');
+      onShowToast('El Nombre de Referencia es obligatorio', 'error');
+      return;
+    }
+    setNameError(null);
+
     if (!targetUrl.trim()) {
       onShowToast('Por favor ingresa una URL de destino', 'error');
       return;
@@ -237,31 +251,44 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
           </span>
         </div>
 
-        {/* Field: Nombre de Referencia */}
+        {/* Field: Nombre de Referencia (Obligatorio) */}
         <div className="space-y-1">
           <div className="flex justify-between text-xs px-1">
-            <label className="text-[11px] font-medium text-zinc-300">
-              Nombre de Referencia
+            <label className="text-[11px] font-medium text-zinc-300 flex items-center gap-1">
+              <span>Nombre de Referencia</span>
+              <span className="text-rose-400 font-bold">*</span>
             </label>
-            <span className="text-[10px] text-zinc-500">Uso interno</span>
+            <span className="text-[10px] text-rose-400/90 font-medium">Obligatorio</span>
           </div>
           <div className="relative">
             <Tag className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
+              required
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Carta de Vinos & Licores"
-              className="w-full bg-[#131620] border border-white/5 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
+              onChange={(e) => {
+                setName(e.target.value);
+                if (e.target.value.trim()) setNameError(null);
+              }}
+              placeholder="Ej. Menú Principal, Wi-Fi Restaurante, Catálogo..."
+              className={`w-full bg-[#131620] border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none transition-colors ${
+                nameError
+                  ? 'border-rose-500/80 focus:border-rose-500'
+                  : 'border-white/5 focus:border-indigo-500'
+              }`}
             />
           </div>
+          {nameError && (
+            <p className="text-[10px] text-rose-400 px-1 font-medium">{nameError}</p>
+          )}
         </div>
 
         {/* Field: Destino Final (Target URL) */}
         <div className="space-y-1">
           <div className="flex justify-between text-xs px-1">
-            <label className="text-[11px] font-medium text-zinc-300">
-              Destino Final (Target URL)
+            <label className="text-[11px] font-medium text-zinc-300 flex items-center gap-1">
+              <span>Destino Final (Target URL)</span>
+              <span className="text-rose-400 font-bold">*</span>
             </label>
             {isValidUrl && (
               <span className="text-[10px] font-semibold text-emerald-400 flex items-center gap-1">
@@ -274,19 +301,22 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
             <Link2 className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="url"
+              required
               value={targetUrl}
               onChange={(e) => setTargetUrl(e.target.value)}
-              placeholder="https://restaurantecentral.com/vinos-2025"
+              placeholder="https://ejemplo.com/tu-destino"
               className="w-full bg-[#131620] border border-white/5 rounded-xl pl-9 pr-9 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
             />
-            <a
-              href={targetUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            {targetUrl && (
+              <a
+                href={targetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
           </div>
           <p className="text-[11px] text-zinc-500 px-1 leading-relaxed">
             Puedes cambiar esta URL en cualquier momento sin reimprimir stickers o códigos físicos.
@@ -296,7 +326,7 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
         {/* Field: Slug Corto Personalizado */}
         <div className="space-y-1">
           <label className="block text-[11px] font-medium text-zinc-300 px-1">
-            Slug Corto Personalizado
+            Slug Corto Personalizado (Opcional)
           </label>
           <div className="flex items-center rounded-xl bg-[#131620] border border-white/5 overflow-hidden focus-within:border-indigo-500 transition-colors">
             <span className="px-3 py-2.5 bg-[#0B0D13] text-zinc-500 text-xs font-mono border-r border-white/5">
@@ -306,12 +336,14 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
               type="text"
               value={slug}
               onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-              placeholder="vinos-premium"
+              placeholder="ejemplo-promo"
               className="flex-1 bg-transparent px-3 py-2.5 text-xs text-white font-mono focus:outline-none"
             />
-            <span className="pr-3 text-emerald-400">
-              <Check className="w-4 h-4" />
-            </span>
+            {slug && (
+              <span className="pr-3 text-emerald-400">
+                <Check className="w-4 h-4" />
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -437,42 +469,35 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
         )}
       </div>
 
-      {/* 5. Vincular a Tarjeta o Disco NFC Card */}
-      <button
-        onClick={() => {
-          if (linkToEdit) onAssignToNfc(linkToEdit);
-          else onShowToast('Guarda el enlace primero para grabarlo en hardware NFC', 'info');
-        }}
-        className="w-full p-4 rounded-2xl bg-[#131620] hover:bg-[#1A1E2D] border border-white/5 flex items-center justify-between text-left transition-all group"
-      >
+      {/* 5. Vincular a Tarjeta o Disco NFC Card (Desactivado en Prototipo) */}
+      <div className="w-full p-4 rounded-2xl bg-[#131620]/60 border border-white/5 flex items-center justify-between text-left opacity-60 cursor-not-allowed">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center justify-center shrink-0">
             <Radio className="w-5 h-5 rotate-90" />
           </div>
           <div>
-            <h4 className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors">
-              Vincular a Tarjeta o Disco NFC
+            <h4 className="text-xs font-bold text-zinc-300">
+              Vincular a Tarjeta o Disco NFC (Desactivado)
             </h4>
-            <p className="text-[11px] text-zinc-400 mt-0.5">
-              Grabar chip NTAG213 para mesas
+            <p className="text-[11px] text-zinc-500 mt-0.5">
+              Disponible en la pestaña Tienda NFC vinculando este enlace
             </p>
           </div>
         </div>
-        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:translate-x-1 transition-transform" />
-      </button>
+        <span className="text-[10px] text-zinc-500 font-mono">PROTOTIPO</span>
+      </div>
 
       {/* 6. Fixed Bottom Action Buttons Dock */}
       <div className="fixed bottom-14 left-0 right-0 z-30 bg-[#0B0D13]/90 backdrop-blur-md border-t border-white/5 py-2 px-4">
         <div className="max-w-md mx-auto grid grid-cols-2 gap-2.5">
           <button
-            onClick={() => {
-              if (linkToEdit) onAssignToNfc(linkToEdit);
-              else onShowToast('Primero presiona "Guardar Dinámico"', 'info');
-            }}
-            className="py-3 px-3 rounded-xl bg-[#1E2230] hover:bg-[#282E40] text-zinc-200 text-xs font-semibold flex items-center justify-center gap-2 border border-white/5 transition-colors"
+            type="button"
+            disabled
+            title="Asignación a NFC desactivada en este prototipo técnico"
+            className="py-3 px-3 rounded-xl bg-[#1E2230]/40 text-zinc-500 text-xs font-semibold flex items-center justify-center gap-2 border border-white/5 cursor-not-allowed opacity-50"
           >
-            <Layers className="w-4 h-4 text-purple-400" />
-            <span>Asignar a NFC</span>
+            <Layers className="w-4 h-4 text-zinc-500" />
+            <span>Asignar a NFC (Desactivado)</span>
           </button>
 
           <button
