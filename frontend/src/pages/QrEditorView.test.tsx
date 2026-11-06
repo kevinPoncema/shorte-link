@@ -7,6 +7,7 @@ vi.mock('../services/api', () => ({
   api: {
     createLink: vi.fn(),
     updateLink: vi.fn(),
+    getLinks: vi.fn(),
   },
   API_BASE_URL: 'http://localhost:3000',
 }));
@@ -21,6 +22,7 @@ describe('QrEditorView Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (api.getLinks as any).mockResolvedValue([]);
   });
 
   it('renders QR Studio editor, live preview and empty required fields without custom slug input', () => {
@@ -146,5 +148,33 @@ describe('QrEditorView Component', () => {
     expect(screen.getByText('kineti.qr/r/menu123')).toBeInTheDocument();
     expect(screen.getByText('https://restaurante.com/menu')).toBeInTheDocument();
     expect(screen.queryByText(/Slug Corto Personalizado/i)).not.toBeInTheDocument();
+  });
+
+  it('blocks saving and shows quota warning when active links limit is reached', async () => {
+    (api.getLinks as any).mockResolvedValue([
+      { id: 'l1', isActive: true },
+      { id: 'l2', isActive: true },
+      { id: 'l3', isActive: true },
+    ]);
+
+    render(
+      <QrEditorView
+        currentUser={mockUser}
+        onSaved={vi.fn()}
+        onAssignToNfc={vi.fn()}
+        onOpenUpgradeModal={vi.fn()}
+        onShowToast={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText(/Cuota alcanzada \(3\/3 enlaces\)/i)).toBeInTheDocument();
+
+    const blockedBtn = screen.getByText('Guardar (Cuota Agotada)');
+    expect(blockedBtn).toBeInTheDocument();
+
+    fireEvent.click(blockedBtn);
+
+    expect(await screen.findByText('Has alcanzado la cuota máxima')).toBeInTheDocument();
+    expect(api.createLink).not.toHaveBeenCalled();
   });
 });

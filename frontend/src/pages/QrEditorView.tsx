@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Copy,
 } from 'lucide-react';
+import { QuotaWarningModal } from '../components/modals/QuotaWarningModal';
 
 interface QrEditorViewProps {
   currentUser: User | null;
@@ -55,8 +56,12 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
   const [selectedPalette, setSelectedPalette] = useState('obsidian');
   const [showCenterLogo, setShowCenterLogo] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [activeLinksCount, setActiveLinksCount] = useState<number | null>(null);
+  const [isQuotaWarningOpen, setIsQuotaWarningOpen] = useState(false);
 
   const isPro = (currentUser?.plan || 'STARTER').toUpperCase() === 'PRO';
+  const maxLinks = isPro ? 50 : 3;
+  const isQuotaExceeded = !linkToEdit && activeLinksCount !== null && activeLinksCount >= maxLinks;
   const qrRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -64,6 +69,11 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
       setName(linkToEdit.name || '');
       setTargetUrl(linkToEdit.targetUrl);
       setSlug(linkToEdit.shortCode);
+    } else {
+      api.getLinks().then((links) => {
+        const count = links.filter((l) => l.isActive).length;
+        setActiveLinksCount(count);
+      }).catch(() => {});
     }
   }, [linkToEdit]);
 
@@ -103,6 +113,12 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
   };
 
   const handleSaveDynamic = async () => {
+    if (isQuotaExceeded) {
+      setIsQuotaWarningOpen(true);
+      onShowToast('Has alcanzado el límite de enlaces de tu plan STARTER', 'error');
+      return;
+    }
+
     if (!name.trim()) {
       setNameError('El Nombre de Referencia es obligatorio');
       onShowToast('El Nombre de Referencia es obligatorio', 'error');
@@ -151,6 +167,9 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
 
       onSaved(savedLink);
     } catch (err: any) {
+      if (err?.statusCode === 403 || err?.message?.toLowerCase().includes('quota') || err?.message?.toLowerCase().includes('limit')) {
+        setIsQuotaWarningOpen(true);
+      }
       onShowToast(err?.message || 'Error al guardar el enlace', 'error');
     } finally {
       setSaving(false);
@@ -159,6 +178,25 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
 
   return (
     <div className="space-y-4 pb-28">
+      {/* Banner de Advertencia de Cuota Superada */}
+      {isQuotaExceeded && (
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 to-amber-600/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs shadow-lg animate-in fade-in">
+          <div className="flex items-center gap-2 text-amber-200 min-w-0">
+            <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="truncate">
+              <strong>Cuota alcanzada ({activeLinksCount}/{maxLinks} enlaces).</strong>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsQuotaWarningOpen(true)}
+            className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[11px] shrink-0 transition-colors"
+          >
+            Ver Cuota / PRO
+          </button>
+        </div>
+      )}
+
       {/* 1. Subheader: STUDIO / EDITOR ACTIVO */}
       <div className="flex items-center justify-between text-xs px-1">
         <div className="flex items-center gap-1.5 font-bold tracking-wider text-zinc-400 uppercase text-[11px]">
@@ -500,15 +538,41 @@ export const QrEditorView: React.FC<QrEditorViewProps> = ({
           </button>
 
           <button
-            onClick={handleSaveDynamic}
+            onClick={() => {
+              if (isQuotaExceeded) {
+                setIsQuotaWarningOpen(true);
+                return;
+              }
+              handleSaveDynamic();
+            }}
             disabled={saving}
-            className="py-3 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-60"
+            className={`py-3 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+              isQuotaExceeded
+                ? 'bg-zinc-800 text-zinc-400 border border-amber-500/30 cursor-not-allowed shadow-none'
+                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 disabled:opacity-60'
+            }`}
           >
-            <Save className="w-4 h-4" />
-            <span>{saving ? 'Guardando...' : 'Guardar Dinámico'}</span>
+            {isQuotaExceeded ? <Lock className="w-4 h-4 text-amber-400" /> : <Save className="w-4 h-4" />}
+            <span>
+              {saving
+                ? 'Guardando...'
+                : isQuotaExceeded
+                  ? 'Guardar (Cuota Agotada)'
+                  : 'Guardar Dinámico'}
+            </span>
           </button>
         </div>
       </div>
+
+      {/* Modal de Advertencia de Cuota Superada */}
+      <QuotaWarningModal
+        isOpen={isQuotaWarningOpen}
+        onClose={() => setIsQuotaWarningOpen(false)}
+        onUpgrade={onOpenUpgradeModal}
+        activeCount={activeLinksCount ?? maxLinks}
+        maxLinks={maxLinks}
+        planName={currentUser?.plan || 'STARTER'}
+      />
     </div>
   );
 };

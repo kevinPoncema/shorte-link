@@ -23,6 +23,7 @@ import {
   Wifi,
   Trash2,
 } from 'lucide-react';
+import { QuotaWarningModal } from '../components/modals/QuotaWarningModal';
 
 interface LinksDashboardViewProps {
   currentUser: User | null;
@@ -49,12 +50,14 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingUrlId, setEditingUrlId] = useState<string | null>(null);
   const [tempTargetUrl, setTempTargetUrl] = useState('');
+  const [isQuotaWarningOpen, setIsQuotaWarningOpen] = useState(false);
 
   const isPro = (currentUser?.plan || 'STARTER').toUpperCase() === 'PRO';
   const maxLinks = isPro ? 50 : 3;
   const activeCount = links.filter((l) => l.isActive).length;
   const quotaUsedPercent = Math.min(100, Math.round((activeCount / maxLinks) * 100));
   const remainingLinks = Math.max(0, maxLinks - activeCount);
+  const isQuotaExceeded = remainingLinks <= 0;
 
   useEffect(() => {
     loadLinks();
@@ -71,6 +74,11 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
 
   const handleToggleActive = async (link: LinkItem) => {
     const nextState = !link.isActive;
+    if (nextState && isQuotaExceeded) {
+      setIsQuotaWarningOpen(true);
+      onShowToast('Límite de cuota alcanzado. No puedes activar este enlace.', 'info');
+      return;
+    }
     try {
       const updated = await api.updateLink(link.id, { isActive: nextState });
       setLinks((prev) => prev.map((l) => (l.id === link.id ? updated : l)));
@@ -237,15 +245,38 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
 
       {/* 4. Primary Button: + Crear enlace nuevo */}
       <button
-        onClick={() => onNavigateToEditor()}
-        className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-between shadow-lg shadow-indigo-600/25 transition-all group"
+        onClick={() => {
+          if (isQuotaExceeded) {
+            setIsQuotaWarningOpen(true);
+            return;
+          }
+          onNavigateToEditor();
+        }}
+        className={`w-full py-3 px-4 rounded-xl font-semibold text-xs flex items-center justify-between transition-all group ${
+          isQuotaExceeded
+            ? 'bg-zinc-800/90 hover:bg-zinc-800 text-zinc-400 border border-amber-500/30 cursor-not-allowed shadow-none'
+            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/25'
+        }`}
       >
         <div className="flex items-center gap-2">
-          <Link2 className="w-4 h-4 transition-transform group-hover:rotate-45" />
-          <span className="font-bold tracking-wide">+ Crear enlace nuevo</span>
+          {isQuotaExceeded ? (
+            <Lock className="w-4 h-4 text-amber-400" />
+          ) : (
+            <Link2 className="w-4 h-4 transition-transform group-hover:rotate-45" />
+          )}
+          <span className="font-bold tracking-wide">
+            {isQuotaExceeded ? '+ Crear enlace nuevo (Cuota Agotada)' : '+ Crear enlace nuevo'}
+          </span>
         </div>
-        <span className="px-2 py-0.5 rounded-md bg-indigo-400/20 text-indigo-200 text-[10px] font-semibold">
-          {isPro ? 'Pro: Ilimitado' : `Starter: ${remainingLinks} libre`}
+        <span
+          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 ${
+            isQuotaExceeded
+              ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30'
+              : 'bg-indigo-400/20 text-indigo-200'
+          }`}
+        >
+          {isQuotaExceeded && <Lock className="w-3 h-3 text-amber-400" />}
+          <span>{isPro ? 'Pro: Ilimitado' : `Starter: ${remainingLinks} libre`}</span>
         </span>
       </button>
 
@@ -508,6 +539,16 @@ export const LinksDashboardView: React.FC<LinksDashboardViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Advertencia de Cuota Superada */}
+      <QuotaWarningModal
+        isOpen={isQuotaWarningOpen}
+        onClose={() => setIsQuotaWarningOpen(false)}
+        onUpgrade={onOpenUpgradeModal}
+        activeCount={activeCount}
+        maxLinks={maxLinks}
+        planName={currentUser?.plan || 'STARTER'}
+      />
     </div>
   );
 };

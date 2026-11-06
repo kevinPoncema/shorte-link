@@ -122,4 +122,46 @@ describe('LinksDashboardView Component', () => {
     fireEvent.click(upgradeBtn);
     expect(handleUpgrade).toHaveBeenCalled();
   });
+
+  it('blocks create link button and opens QuotaWarningModal when quota limit is reached', async () => {
+    const handleUpgrade = vi.fn();
+    const threeLinks: LinkItem[] = [
+      ...mockLinks,
+      {
+        id: 'link-3',
+        name: 'Gatos 3',
+        shortCode: 'gatos3',
+        targetUrl: 'https://purina.com.hn',
+        isActive: true,
+        userId: 'user-1',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+
+    (api.getLinks as any).mockResolvedValue(threeLinks);
+
+    render(
+      <LinksDashboardView
+        currentUser={mockUser}
+        onNavigateToEditor={vi.fn()}
+        onNavigateToAnalytics={vi.fn()}
+        onOpenUpgradeModal={handleUpgrade}
+        onShowToast={vi.fn()}
+        onPreviewQr={vi.fn()}
+        onOrderPhysical={vi.fn()}
+      />
+    );
+
+    const blockedBtn = await screen.findByText('+ Crear enlace nuevo (Cuota Agotada)');
+    expect(blockedBtn).toBeInTheDocument();
+
+    fireEvent.click(blockedBtn);
+
+    expect(await screen.findByText('Has alcanzado la cuota máxima')).toBeInTheDocument();
+    expect(screen.getByText('Desbloquear 50 con Plan PRO')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Desbloquear 50 con Plan PRO'));
+    expect(handleUpgrade).toHaveBeenCalled();
+  });
 });
