@@ -13,19 +13,19 @@ import {
 } from '../links/interfaces/click-event.interface';
 import {
   CLICKS_QUEUE_KEY,
-  ClickQueueService,
-} from './click-queue.service';
-
-export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
-
-export const REDIRECT_KEY_PREFIX = 'r:';
-
-export const DEFAULT_REDIRECT_CACHE_TTL_SECONDS = 86400; // 24 horas
+  DEFAULT_REDIRECT_CACHE_TTL_SECONDS,
+  REDIRECT_KEY_PREFIX,
+  REDIS_CLIENT,
+} from './cache.constants';
+import { ClickQueueService } from './click-queue.service';
 
 export {
   ClickEventPayload,
   ClickQueuePayload,
   CLICKS_QUEUE_KEY,
+  DEFAULT_REDIRECT_CACHE_TTL_SECONDS,
+  REDIRECT_KEY_PREFIX,
+  REDIS_CLIENT,
 };
 
 /**

@@ -6,7 +6,6 @@ import { Plan } from './models/plan.entity';
 import { TypeOrmPlanRepository } from './repositories/typeorm-plan.repository';
 import { PlanSeeder } from './seeders/plan.seeder';
 import { PlanContextService } from './services/plan-context.service';
-import { BasePlanStrategy, PlanConfig } from './strategies/base-plan.strategy';
 import { ProPlanStrategy } from './strategies/pro-plan.strategy';
 import { StarterPlanStrategy } from './strategies/starter-plan.strategy';
 
@@ -38,7 +37,6 @@ import { StarterPlanStrategy } from './strategies/starter-plan.strategy';
   ],
   exports: [
     PlanContextService,
-    BasePlanStrategy,
     StarterPlanStrategy,
     ProPlanStrategy,
     PLAN_REPOSITORY,

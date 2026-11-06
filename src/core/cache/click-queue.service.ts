@@ -1,9 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
 import { ClickEventPayload } from '../links/interfaces/click-event.interface';
-import { REDIS_CLIENT } from './cache.service';
+import { CLICKS_QUEUE_KEY, REDIS_CLIENT } from './cache.constants';
 
-export const CLICKS_QUEUE_KEY = 'queue:clicks';
+export { CLICKS_QUEUE_KEY };
 
 /**
  * Servicio especializado en la gestión de la cola FIFO de eventos de analíticas (`queue:clicks`).

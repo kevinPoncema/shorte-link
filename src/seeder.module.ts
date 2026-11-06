@@ -1,6 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { OrderItem } from './billing/models/order-item.entity';
+import { Order } from './billing/models/order.entity';
+import { Subscription } from './billing/models/subscription.entity';
+import { LinkEvent } from './core/models/link-event.entity';
+import { Link } from './core/models/link.entity';
+import { User } from './core/models/user.entity';
+import { Plan } from './plans/models/plan.entity';
 import { PlansModule } from './plans/plans.module';
 
 /**
@@ -24,6 +31,7 @@ import { PlansModule } from './plans/plans.module';
         username: configService.get<string>('DB_USERNAME', 'postgres'),
         password: configService.get<string>('DB_PASSWORD', 'postgres'),
         database: configService.get<string>('DB_NAME', 'qr_shortener'),
+        entities: [Plan, User, Link, LinkEvent, Subscription, Order, OrderItem],
         autoLoadEntities: true,
         synchronize:
           configService.get<string>('DB_SYNCHRONIZE', 'true') === 'true',
