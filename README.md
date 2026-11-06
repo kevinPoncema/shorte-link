@@ -26,6 +26,8 @@ npm run dev:frontend         # Frontend React + Vite con Tailwind (:5173)
 npm run build                # Compilación del backend a dist/
 npm run build:frontend       # Compilación del frontend a frontend/dist/
 npm run start:prod           # Ejecución del backend en producción
+npm run mcp                  # Ejecuta el servidor MCP sobre stdio (compilado)
+npm run mcp:dev              # Ejecuta el servidor MCP con ts-node (desarrollo)
 npm test                     # Pruebas unitarias del backend (Jest)
 npm run test:cov             # Cobertura de pruebas del backend
 npm run test:e2e             # Pruebas E2E sobre Fastify
@@ -41,5 +43,6 @@ npm test --prefix frontend   # Pruebas unitarias/integración del frontend (Vite
 - [Módulos y Patrón Strategy](docs/modules.md)
 - [Configuración y Variables de Entorno](docs/configuration.md)
 - [API, OpenAPI, Seguridad y Testing](docs/api-and-security.md)
+- [Servidor MCP (Model Context Protocol)](docs/mcp-server.md)
 - [Guía de Despliegue](docs/deployment.md)
 - [Hoja de Ruta de Auditoría y Refactorización](docs/audit-roadmap.md)
