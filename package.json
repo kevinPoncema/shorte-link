@@ -24,7 +24,8 @@
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "dev:frontend": "npm run dev --prefix frontend",
-    "build:frontend": "npm run build --prefix frontend"
+    "build:frontend": "npm run build --prefix frontend",
+    "simulate:traffic": "node scripts/simulate-traffic.js"
   },
   "dependencies": {
     "@fastify/static": "10.1.2",
